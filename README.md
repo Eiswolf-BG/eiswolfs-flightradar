@@ -7,6 +7,8 @@ altitude/speed/model/route details and a proximity LED alert.
 ![platform](https://img.shields.io/badge/platform-ESP32--2432S028-yellow)
 ![framework](https://img.shields.io/badge/framework-Arduino%20%2F%20PlatformIO-blue)
 
+![Eiswolfs Flightradar screenshot](images/screenshot.jpg)
+
 ## Features
 
 - **Live radar screen** – circular radar view, sized to the full screen width, with a rotating green sweep line
