@@ -1,6 +1,7 @@
 #include "calibration_screen.h"
 #include "touch_input.h"
 #include "config.h"
+#include "i18n.h"
 
 namespace CalibrationScreen {
 
@@ -20,8 +21,6 @@ namespace {
         tft.fillCircle(x, y, 3, TFT_WHITE);
     }
 
-    // Wartet auf eine Beruehrung, mittelt ein paar Rohwerte waehrend sie
-    // gehalten wird, und wartet danach auf das Loslassen, bevor es zurueckkehrt.
     RawAvg waitForTap() {
         RawAvg avg;
 
@@ -39,7 +38,7 @@ namespace {
         while (TouchInput::rawPoint().touched) {
             delay(10);
         }
-        delay(150); // kleine Pause, damit der naechste Tap nicht sofort durchrutscht
+        delay(150);
 
         return avg;
     }
@@ -54,11 +53,11 @@ void run(TFT_eSPI& tft) {
     const int16_t W = Config::SCREEN_WIDTH;
     const int16_t H = Config::SCREEN_HEIGHT;
 
-    struct { int16_t x, y; const char* label; } targets[4] = {
-        { M,     M,     "Oben links" },
-        { W - M, M,     "Oben rechts" },
-        { W - M, H - M, "Unten rechts" },
-        { M,     H - M, "Unten links" },
+    struct { int16_t x, y; StringId label; } targets[4] = {
+        { M,     M,     StringId::CALIB_TOP_LEFT },
+        { W - M, M,     StringId::CALIB_TOP_RIGHT },
+        { W - M, H - M, StringId::CALIB_BOTTOM_RIGHT },
+        { M,     H - M, StringId::CALIB_BOTTOM_LEFT },
     };
 
     RawAvg samples[4];
@@ -67,24 +66,20 @@ void run(TFT_eSPI& tft) {
         tft.fillScreen(TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
         tft.setTextSize(1);
-        // Text mittig zeichnen - weit weg von allen 4 Eck-Positionen, damit er
-        // nie vom Ziel-Kreis ueberdeckt wird.
         tft.setTextDatum(MC_DATUM);
-        tft.drawString("Touch-Kalibrierung", W / 2, H / 2 - 12);
-        char msg[40];
-        snprintf(msg, sizeof(msg), "Bitte Kreis beruehren:");
-        tft.drawString(msg, W / 2, H / 2 + 4);
-        tft.drawString(targets[i].label, W / 2, H / 2 + 20);
+        tft.drawString(I18n::t(StringId::CALIB_TITLE), W / 2, H / 2 - 12);
+        tft.drawString(I18n::t(StringId::CALIB_PROMPT), W / 2, H / 2 + 4);
+        tft.drawString(I18n::t(targets[i].label), W / 2, H / 2 + 20);
         tft.setTextDatum(TL_DATUM);
 
         drawTarget(tft, targets[i].x, targets[i].y);
         samples[i] = waitForTap();
     }
 
-    int16_t xmin = (samples[0].avgX() + samples[3].avgX()) / 2; // links oben+unten
-    int16_t xmax = (samples[1].avgX() + samples[2].avgX()) / 2; // rechts oben+unten
-    int16_t ymin = (samples[0].avgY() + samples[1].avgY()) / 2; // oben links+rechts
-    int16_t ymax = (samples[3].avgY() + samples[2].avgY()) / 2; // unten links+rechts
+    int16_t xmin = (samples[0].avgX() + samples[3].avgX()) / 2;
+    int16_t xmax = (samples[1].avgX() + samples[2].avgX()) / 2;
+    int16_t ymin = (samples[0].avgY() + samples[1].avgY()) / 2;
+    int16_t ymax = (samples[3].avgY() + samples[2].avgY()) / 2;
 
     swapIfNeeded(xmin, xmax);
     swapIfNeeded(ymin, ymax);
@@ -95,7 +90,7 @@ void run(TFT_eSPI& tft) {
     tft.fillScreen(TFT_BLACK);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setCursor(10, 10);
-    tft.println("Kalibrierung gespeichert!");
+    tft.println(I18n::t(StringId::CALIB_SAVED));
     delay(800);
 }
 

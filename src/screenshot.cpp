@@ -1,5 +1,6 @@
 #include "screenshot.h"
 #include "config.h"
+#include "sd_mutex.h"
 #include <SD.h>
 #include <time.h>
 
@@ -15,6 +16,8 @@ namespace {
 }
 
 String save(TFT_eSPI& tft) {
+    SdMutex::Guard guard;
+
     if (!SD.exists(Config::SD_SCREENSHOT_DIR)) {
         SD.mkdir(Config::SD_SCREENSHOT_DIR);
     }

@@ -2,6 +2,7 @@
 #include "flight_logbook.h"
 #include "touch_input.h"
 #include "config.h"
+#include "i18n.h"
 
 namespace StatsScreen {
 
@@ -13,11 +14,11 @@ namespace {
         }
     };
 
-    void drawButton(TFT_eSPI& tft, const Rect& r, const String& label) {
-        tft.fillRoundRect(r.x, r.y, r.w, r.h, 4, TFT_NAVY);
+    void drawButton(TFT_eSPI& tft, const Rect& r, const String& label, uint16_t bg = TFT_NAVY) {
+        tft.fillRoundRect(r.x, r.y, r.w, r.h, 4, bg);
         tft.drawRoundRect(r.x, r.y, r.w, r.h, 4, TFT_DARKGREY);
         tft.setTextDatum(MC_DATUM);
-        tft.setTextColor(TFT_WHITE, TFT_NAVY);
+        tft.setTextColor(TFT_WHITE, bg);
         tft.drawString(label, r.x + r.w / 2, r.y + r.h / 2);
         tft.setTextDatum(TL_DATUM);
     }
@@ -32,39 +33,97 @@ namespace {
         tft.print(value);
         tft.setTextSize(1);
     }
+
+    constexpr uint32_t CONFIRM_WINDOW_MS = 4000;
 }
 
 void run(TFT_eSPI& tft) {
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setCursor(10, 10);
+    tft.println(I18n::t(StringId::STATS_TITLE));
+    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    tft.setCursor(10, 44);
+    tft.print(I18n::t(StringId::LOADING));
+
     uint16_t today = FlightLogbook::todayCount();
     uint32_t allTimeAircraft = 0;
     uint16_t allTimeDays = 0;
     FlightLogbook::computeAllTimeStats(allTimeAircraft, allTimeDays);
 
-    Rect backBtn = {10, (int16_t)(Config::SCREEN_HEIGHT - 50), (int16_t)(Config::SCREEN_WIDTH - 20), 40};
+    Rect resetBtn = {10, (int16_t)(Config::SCREEN_HEIGHT - 100), (int16_t)(Config::SCREEN_WIDTH - 20), 40};
+    Rect backBtn  = {10, (int16_t)(Config::SCREEN_HEIGHT - 50), (int16_t)(Config::SCREEN_WIDTH - 20), 40};
 
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setCursor(10, 10);
-    tft.println("Statistics");
+    bool confirmPending = false;
+    uint32_t confirmArmedAtMs = 0;
+    bool justReset = false;
 
-    drawStatRow(tft, 44, "Aircraft logged today", String(today));
-    drawStatRow(tft, 90, "Aircraft logged all-time", String(allTimeAircraft));
-    drawStatRow(tft, 136, "Days with sightings", String(allTimeDays));
+    auto redraw = [&]() {
+        tft.fillScreen(TFT_BLACK);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.setCursor(10, 10);
+        tft.println(I18n::t(StringId::STATS_TITLE));
 
-    if (allTimeDays > 0) {
-        float avgPerDay = (float)allTimeAircraft / (float)allTimeDays;
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%.1f", avgPerDay);
-        drawStatRow(tft, 182, "Average per day", String(buf));
-    }
+        drawStatRow(tft, 44, I18n::t(StringId::STATS_TODAY), String(today));
+        drawStatRow(tft, 90, I18n::t(StringId::STATS_ALLTIME), String(allTimeAircraft));
+        drawStatRow(tft, 136, I18n::t(StringId::STATS_DAYS), String(allTimeDays));
 
-    drawButton(tft, backBtn, "Back");
+        if (justReset) {
+            tft.setTextColor(TFT_GREEN, TFT_BLACK);
+            tft.setCursor(10, 182);
+            tft.print(I18n::t(StringId::STATS_RESET_DONE));
+        } else if (allTimeDays > 0) {
+            float avgPerDay = (float)allTimeAircraft / (float)allTimeDays;
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%.1f", avgPerDay);
+            drawStatRow(tft, 182, I18n::t(StringId::STATS_AVG), String(buf));
+        }
+
+        uint32_t upSec = millis() / 1000;
+        uint32_t upH = upSec / 3600;
+        uint32_t upM = (upSec % 3600) / 60;
+        char upBuf[8];
+        snprintf(upBuf, sizeof(upBuf), "%luh %lum", (unsigned long)upH, (unsigned long)upM);
+        tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        tft.setCursor(10, 210);
+        tft.print(String(I18n::t(StringId::STATS_UPTIME_PREFIX)) + upBuf);
+
+        if (confirmPending) {
+            drawButton(tft, resetBtn, I18n::t(StringId::STATS_RESET_CONFIRM), TFT_MAROON);
+        } else {
+            drawButton(tft, resetBtn, I18n::t(StringId::STATS_RESET_BTN));
+        }
+        drawButton(tft, backBtn, I18n::t(StringId::BACK));
+    };
+
+    redraw();
 
     bool done = false;
     while (!done) {
+        if (confirmPending && millis() - confirmArmedAtMs > CONFIRM_WINDOW_MS) {
+            confirmPending = false;
+            redraw();
+        }
+
         TouchInput::Point tap;
-        if (TouchInput::wasTapped(tap) && backBtn.contains(tap.x, tap.y)) {
-            done = true;
+        if (TouchInput::wasTapped(tap)) {
+            if (resetBtn.contains(tap.x, tap.y)) {
+                if (confirmPending) {
+                    FlightLogbook::resetAllData();
+                    today = 0;
+                    allTimeAircraft = 0;
+                    allTimeDays = 0;
+                    confirmPending = false;
+                    justReset = true;
+                    redraw();
+                } else {
+                    confirmPending = true;
+                    confirmArmedAtMs = millis();
+                    redraw();
+                }
+            } else if (backBtn.contains(tap.x, tap.y)) {
+                done = true;
+            }
         }
         delay(20);
     }

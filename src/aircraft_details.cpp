@@ -75,8 +75,11 @@ void update() {
 
     WiFiClientSecure client;
     client.setInsecure();
-    client.setTimeout(5000);
 
+    // hexdb.io zuerst versuchen (bisherige Quelle) - aber mit kuerzerem
+    // Timeout (3s statt 5s), damit ein kompletter Ausfall des Dienstes die
+    // ADS-B-Abfrage nicht unnoetig lange blockiert, bevor der Fallback greift.
+    client.setTimeout(3000);
     String body;
     if (httpGetString(client, String("https://hexdb.io/api/v1/aircraft/") + hex, body)) {
         JsonDocument doc;
@@ -88,6 +91,27 @@ void update() {
                 snprintf(result.model, sizeof(result.model), "%s %s", manufacturer, type);
             } else if (type[0]) {
                 strncpy(result.model, type, sizeof(result.model) - 1);
+            }
+        }
+    }
+
+    // Fallback: hexdb.io war nicht erreichbar/lieferte kein Modell -
+    // adsbdb.com als zweite, unabhaengige Quelle versuchen (andere API-Form,
+    // aber inhaltlich aequivalent: Hersteller + Typ ueber den Hex-Code).
+    if (!result.model[0]) {
+        client.setTimeout(4000);
+        String body2;
+        if (httpGetString(client, String("https://api.adsbdb.com/v0/aircraft/") + hex, body2)) {
+            JsonDocument doc2;
+            DeserializationError err2 = deserializeJson(doc2, body2);
+            if (!err2) {
+                const char* manufacturer = doc2["response"]["aircraft"]["manufacturer"] | "";
+                const char* type = doc2["response"]["aircraft"]["type"] | "";
+                if (manufacturer[0] && type[0]) {
+                    snprintf(result.model, sizeof(result.model), "%s %s", manufacturer, type);
+                } else if (type[0]) {
+                    strncpy(result.model, type, sizeof(result.model) - 1);
+                }
             }
         }
     }

@@ -10,9 +10,11 @@
 #include "radar_math.h"
 #include "aircraft_table.h"
 #include "airline_lookup.h"
+#include "airline_filter.h"
 #include "sd_storage.h"
 #include "wifi_manager.h"
 #include "location_manager.h"
+#include "location_presets.h"
 #include "adsb_client.h"
 #include "touch_input.h"
 #include "calibration_screen.h"
@@ -25,12 +27,11 @@
 #include "led_alert.h"
 #include "flight_logbook.h"
 #include "screenshot.h"
+#include "i18n.h"
+#include "first_run_language_screen.h"
 
 TFT_eSPI tft = TFT_eSPI();
 
-// Schlanker Header (Titel + Buttons) PLUS eine zweite, duenne Statuszeile
-// (Uhrzeit + WLAN-Signalstaerke) darunter - der Radar-Kreis bekommt den Rest
-// des Screens.
 constexpr int16_t HEADER_TITLE_H = 30;
 constexpr int16_t STATUS_LINE_H = 12;
 constexpr int16_t CONTENT_TOP = HEADER_TITLE_H + STATUS_LINE_H;
@@ -44,6 +45,12 @@ uint32_t lastRenderedVersion = 0xFFFFFFFF;
 bool forceRedraw = false;
 bool wasEmergency = false;
 bool bannerBlinkOn = false;
+
+constexpr uint8_t BACKLIGHT_FULL = 255;
+constexpr uint8_t BACKLIGHT_DIMMED = 12;
+constexpr uint8_t BACKLIGHT_PWM_CHANNEL = 0;
+uint32_t lastInteractionMs = 0;
+bool screenDimmed = false;
 
 struct Rect {
     int16_t x, y, w, h;
@@ -117,10 +124,10 @@ void takeScreenshotWithFeedback() {
     tft.setTextColor(TFT_WHITE, TFT_NAVY);
     tft.setCursor(6, 10);
     if (filename.length() > 0) {
-        tft.print("Saved: " + filename);
+        tft.print(String(I18n::t(StringId::SCREENSHOT_SAVED_PREFIX)) + filename);
     } else {
         tft.setTextColor(TFT_RED, TFT_NAVY);
-        tft.print("Screenshot failed");
+        tft.print(I18n::t(StringId::SCREENSHOT_FAILED));
     }
     delay(1200);
     drawHeader();
@@ -137,13 +144,13 @@ void haltWithSdRequiredScreen() {
 
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
     tft.setTextSize(2);
-    tft.drawString("For this app a", cx, cy - 40);
-    tft.drawString("SD card is", cx, cy - 10);
-    tft.drawString("required", cx, cy + 20);
+    tft.drawString(I18n::t(StringId::SD_REQUIRED_LINE1), cx, cy - 40);
+    tft.drawString(I18n::t(StringId::SD_REQUIRED_LINE2), cx, cy - 10);
+    tft.drawString(I18n::t(StringId::SD_REQUIRED_LINE3), cx, cy + 20);
 
     tft.setTextSize(1);
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.drawString("Insert a card and restart the device", cx, cy + 60);
+    tft.drawString(I18n::t(StringId::SD_REQUIRED_HINT), cx, cy + 60);
     tft.setTextDatum(TL_DATUM);
 
     while (true) {
@@ -176,7 +183,12 @@ void setup() {
 
     tft.init();
     tft.setRotation(0);
+    tft.invertDisplay(true);
     tft.fillScreen(TFT_BLACK);
+
+    ledcSetup(BACKLIGHT_PWM_CHANNEL, 5000, 8);
+    ledcAttachPin(TFT_BL, BACKLIGHT_PWM_CHANNEL);
+    ledcWrite(BACKLIGHT_PWM_CHANNEL, BACKLIGHT_FULL);
 
     TouchInput::begin();
     LedAlert::begin();
@@ -188,13 +200,21 @@ void setup() {
     }
     SdStorage::seedDefaultDataFiles();
 
+    // "Allererster Start" erkennen: config.txt existiert noch nicht (wird
+    // erst beim ersten SettingsStore::save()-Aufruf angelegt). Muss VOR
+    // SettingsStore::load() geprueft werden, da load() die Datei nicht
+    // erzeugt, nur liest.
+    bool isFirstRun = !SD.exists(Config::SD_SETTINGS_FILE);
+
     SettingsStore::load();
     tft.invertDisplay(SettingsStore::displayInverted());
 
     WifiMgr::init();
+    LocationPresets::init();
+    AirlineFilter::init();
 
     SplashScreen::begin(tft);
-    SplashScreen::setStatusLine(tft, 0, "SD Card: OK", TFT_WHITE);
+    SplashScreen::setStatusLine(tft, 0, I18n::t(StringId::SPLASH_SD_OK), TFT_WHITE);
 
     if (!TouchInput::loadCalibration()) {
         CalibrationScreen::run(tft);
@@ -203,7 +223,7 @@ void setup() {
     if (WifiMgr::networkCount() == 0) {
         WifiSetupScreen::run(tft);
     } else {
-        SplashScreen::setStatusLine(tft, 1, "Connecting WiFi...");
+        SplashScreen::setStatusLine(tft, 1, I18n::t(StringId::SPLASH_CONNECTING_WIFI));
         WifiMgr::beginConnect();
 
         uint32_t waitStart = millis();
@@ -213,15 +233,24 @@ void setup() {
         }
 
         if (WifiMgr::getState() == WifiMgr::State::Connected) {
-            SplashScreen::setStatusLine(tft, 1, String("WiFi OK: ") + WifiMgr::getIP());
+            SplashScreen::setStatusLine(tft, 1, String(I18n::t(StringId::SPLASH_WIFI_OK_PREFIX)) + WifiMgr::getIP());
         } else {
-            SplashScreen::setStatusLine(tft, 1, "WiFi FAILED", TFT_RED);
+            SplashScreen::setStatusLine(tft, 1, I18n::t(StringId::SPLASH_WIFI_FAILED), TFT_RED);
         }
+    }
+
+    // --- Sprachauswahl: NUR beim allerersten Start, direkt nach Touch-
+    //     Kalibrierung und WLAN-Ersteinrichtung, bevor irgendwelche weiteren
+    //     Texte in (falscher) Standardsprache gezeigt werden. ---
+    if (isFirstRun) {
+        FirstRunLanguageScreen::run(tft);
+        SplashScreen::begin(tft);
+        SplashScreen::setStatusLine(tft, 0, I18n::t(StringId::SPLASH_SD_OK), TFT_WHITE);
     }
 
     AdsbClient::primeTime();
 
-    SplashScreen::setStatusLine(tft, 2, "Getting location...");
+    SplashScreen::setStatusLine(tft, 2, I18n::t(StringId::SPLASH_GETTING_LOCATION));
     LocationManager::init();
     uint32_t locStart = millis();
     while (LocationManager::currentSource() == LocationManager::Source::None &&
@@ -229,7 +258,7 @@ void setup() {
         LocationManager::requestIpLookupIfNeeded();
         delay(200);
     }
-    SplashScreen::setStatusLine(tft, 2, "Ready!");
+    SplashScreen::setStatusLine(tft, 2, I18n::t(StringId::SPLASH_READY));
 
     if (LocationManager::hasUtcOffset()) {
         configTime(LocationManager::utcOffsetSeconds(), 0, "pool.ntp.org", "time.nist.gov");
@@ -246,11 +275,25 @@ void setup() {
     drawHeader();
     updateStatusLine();
     RadarScreen::render(tft, CONTENT_TOP);
+
+    lastInteractionMs = millis();
 }
 
 void loop() {
     TouchInput::Point tap;
-    if (TouchInput::wasTapped(tap)) {
+    bool tapped = TouchInput::wasTapped(tap);
+
+    if (tapped) {
+        lastInteractionMs = millis();
+
+        if (screenDimmed) {
+            ledcWrite(BACKLIGHT_PWM_CHANNEL, BACKLIGHT_FULL);
+            screenDimmed = false;
+            tapped = false;
+        }
+    }
+
+    if (tapped) {
         if (menuBtn.contains(tap.x, tap.y)) {
             MenuScreen::run(tft);
             drawHeader();
@@ -290,5 +333,14 @@ void loop() {
     if (nowMs - lastStatusLineMs >= STATUS_LINE_UPDATE_MS) {
         lastStatusLineMs = nowMs;
         updateStatusLine();
+    }
+
+    uint8_t timeoutMin = SettingsStore::screenTimeoutMinutes();
+    if (!screenDimmed && timeoutMin > 0) {
+        uint32_t timeoutMs = (uint32_t)timeoutMin * 60000UL;
+        if (nowMs - lastInteractionMs >= timeoutMs) {
+            ledcWrite(BACKLIGHT_PWM_CHANNEL, BACKLIGHT_DIMMED);
+            screenDimmed = true;
+        }
     }
 }

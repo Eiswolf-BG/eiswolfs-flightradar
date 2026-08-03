@@ -1,0 +1,17 @@
+#pragma once
+#include <Arduino.h>
+
+namespace LocationPresets {
+    constexpr uint8_t MAX_PRESETS = 3;
+
+    void init();
+
+    uint8_t count();
+    void getLatLon(uint8_t index, double& lat, double& lon);
+
+    bool addPreset(double lat, double lon);
+    void removePreset(uint8_t index);
+
+    int8_t activeIndex();
+    void setActiveIndex(int8_t index);
+}

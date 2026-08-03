@@ -3,6 +3,7 @@
 #include "aircraft.h"
 #include "aircraft_table.h"
 #include "settings_store.h"
+#include "sd_mutex.h"
 #include <SD.h>
 #include <time.h>
 #include <cstring>
@@ -42,6 +43,22 @@ namespace {
         seenCount++;
     }
 
+    uint32_t countLinesFast(File& f) {
+        constexpr size_t BUF_SIZE = 1024;
+        static uint8_t buf[BUF_SIZE];
+        uint32_t lines = 0;
+        uint32_t blocksRead = 0;
+        while (f.available()) {
+            size_t n = f.read(buf, BUF_SIZE);
+            for (size_t i = 0; i < n; i++) {
+                if (buf[i] == '\n') lines++;
+            }
+            blocksRead++;
+            if (blocksRead % 8 == 0) yield();
+        }
+        return lines;
+    }
+
     void loadSeenFromTodayFile() {
         seenCount = 0;
         char filename[64];
@@ -51,21 +68,42 @@ namespace {
         File f = SD.open(filename, FILE_READ);
         if (!f) return;
 
+        constexpr size_t BUF_SIZE = 1024;
+        static uint8_t buf[BUF_SIZE];
+        char lineBuf[48];
+        size_t lineLen = 0;
         bool firstLine = true;
-        while (f.available() && seenCount < MAX_SEEN) {
-            String line = f.readStringUntil('\n');
-            line.trim();
-            if (line.length() == 0) continue;
-            if (firstLine) { firstLine = false; continue; }
+        uint32_t blocksRead = 0;
 
-            int firstComma = line.indexOf(',');
-            if (firstComma < 0) continue;
-            int secondComma = line.indexOf(',', firstComma + 1);
-            String hex = (secondComma < 0) ? line.substring(firstComma + 1)
-                                            : line.substring(firstComma + 1, secondComma);
-            hex.trim();
-            if (hex.length() > 0) markSeen(hex.c_str());
-            yield();
+        auto processLine = [&]() {
+            if (lineLen == 0) return;
+            if (firstLine) { firstLine = false; return; }
+            lineBuf[lineLen] = 0;
+            char* firstComma = strchr(lineBuf, ',');
+            if (!firstComma) return;
+            char* secondComma = strchr(firstComma + 1, ',');
+            size_t hexLen = secondComma ? (size_t)(secondComma - (firstComma + 1))
+                                         : strlen(firstComma + 1);
+            if (hexLen > 0 && hexLen < sizeof(seenHex[0])) {
+                char hexBuf[7] = {0};
+                memcpy(hexBuf, firstComma + 1, hexLen);
+                markSeen(hexBuf);
+            }
+        };
+
+        while (f.available() && seenCount < MAX_SEEN) {
+            size_t n = f.read(buf, BUF_SIZE);
+            for (size_t i = 0; i < n && seenCount < MAX_SEEN; i++) {
+                char c = (char)buf[i];
+                if (c == '\n' || c == '\r') {
+                    if (lineLen > 0) processLine();
+                    lineLen = 0;
+                } else if (lineLen < sizeof(lineBuf) - 1) {
+                    lineBuf[lineLen++] = c;
+                }
+            }
+            blocksRead++;
+            if (blocksRead % 8 == 0) yield();
         }
         f.close();
     }
@@ -101,11 +139,14 @@ namespace {
 }
 
 void init() {
+    SdMutex::Guard guard;
     ensureCurrentDate();
 }
 
 void update() {
     if (!SettingsStore::flightLogbookEnabled()) return;
+
+    SdMutex::Guard guard;
 
     ensureCurrentDate();
     if (currentDateStr[0] == 0) return;
@@ -154,6 +195,8 @@ void computeAllTimeStats(uint32_t& totalAircraft, uint16_t& totalDays) {
     totalAircraft = 0;
     totalDays = 0;
 
+    SdMutex::Guard guard;
+
     File dir = SD.open(Config::SD_LOG_DIR);
     if (!dir || !dir.isDirectory()) return;
 
@@ -163,12 +206,7 @@ void computeAllTimeStats(uint32_t& totalAircraft, uint16_t& totalDays) {
             String name = String(entry.name());
             if (name.endsWith(".csv")) {
                 totalDays++;
-                uint32_t lines = 0;
-                while (entry.available()) {
-                    entry.readStringUntil('\n');
-                    lines++;
-                    if (lines % 50 == 0) yield();
-                }
+                uint32_t lines = countLinesFast(entry);
                 if (lines > 0) totalAircraft += (lines - 1);
             }
         }
@@ -180,6 +218,8 @@ void computeAllTimeStats(uint32_t& totalAircraft, uint16_t& totalDays) {
 
 uint8_t listDays(DayEntry* out, uint8_t maxEntries) {
     uint8_t filled = 0;
+
+    SdMutex::Guard guard;
 
     File dir = SD.open(Config::SD_LOG_DIR);
     if (!dir || !dir.isDirectory()) return 0;
@@ -193,12 +233,7 @@ uint8_t listDays(DayEntry* out, uint8_t maxEntries) {
                 int slashIdx = dateOnly.lastIndexOf('/');
                 if (slashIdx >= 0) dateOnly = dateOnly.substring(slashIdx + 1);
 
-                uint32_t lines = 0;
-                while (entry.available()) {
-                    entry.readStringUntil('\n');
-                    lines++;
-                    if (lines % 50 == 0) yield();
-                }
+                uint32_t lines = countLinesFast(entry);
 
                 strncpy(out[filled].date, dateOnly.c_str(), sizeof(out[filled].date) - 1);
                 out[filled].count = (lines > 0) ? (lines - 1) : 0;
@@ -211,6 +246,33 @@ uint8_t listDays(DayEntry* out, uint8_t maxEntries) {
     dir.close();
 
     return filled;
+}
+
+void resetAllData() {
+    SdMutex::Guard guard;
+
+    File dir = SD.open(Config::SD_LOG_DIR);
+    if (dir && dir.isDirectory()) {
+        File entry = dir.openNextFile();
+        while (entry) {
+            bool isDir = entry.isDirectory();
+            String name = String(entry.name());
+            entry.close();
+
+            if (!isDir) {
+                String fullPath = name.startsWith("/")
+                                       ? name
+                                       : String(Config::SD_LOG_DIR) + "/" + name;
+                SD.remove(fullPath);
+            }
+            entry = dir.openNextFile();
+        }
+        dir.close();
+    }
+
+    seenCount = 0;
+    currentDateStr[0] = 0;
+    ensureCurrentDate();
 }
 
 }

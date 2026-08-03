@@ -2,6 +2,7 @@
 #include "touch_input.h"
 #include "wifi_manager.h"
 #include "config.h"
+#include "i18n.h"
 
 namespace WifiSetupScreen {
 
@@ -185,7 +186,7 @@ bool run(TFT_eSPI& tft) {
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setTextSize(1);
     tft.setCursor(10, 10);
-    tft.println("Scanning WiFi...");
+    tft.println(I18n::t(StringId::WIFI_SCANNING));
     drawCancelButton(tft);
 
     while (!skipped) {
@@ -206,7 +207,7 @@ bool run(TFT_eSPI& tft) {
             tft.fillScreen(TFT_BLACK);
             tft.setCursor(10, 10);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.println(ssidCount == 0 ? "No networks found" : "Select WiFi:");
+            tft.println(ssidCount == 0 ? I18n::t(StringId::WIFI_NO_NETWORKS) : I18n::t(StringId::WIFI_SELECT));
             drawCancelButton(tft);
         }
 
@@ -219,7 +220,7 @@ bool run(TFT_eSPI& tft) {
                 tft.fillScreen(TFT_BLACK);
                 tft.setCursor(10, 10);
                 tft.setTextColor(TFT_WHITE, TFT_BLACK);
-                tft.println("Connected!");
+                tft.println(I18n::t(StringId::WIFI_CONNECTED_BANG));
                 delay(900);
                 return true;
             } else if (WifiMgr::getState() == WifiMgr::State::Failed) {
@@ -227,10 +228,10 @@ bool run(TFT_eSPI& tft) {
                 tft.fillScreen(TFT_BLACK);
                 tft.setCursor(10, 10);
                 tft.setTextColor(TFT_RED, TFT_BLACK);
-                tft.println("Connection failed.");
+                tft.println(I18n::t(StringId::WIFI_CONNECTION_FAILED));
                 tft.setTextColor(TFT_WHITE, TFT_BLACK);
                 tft.setCursor(10, 30);
-                tft.println("Back to network list...");
+                tft.println(I18n::t(StringId::WIFI_BACK_TO_LIST_MSG));
                 delay(1400);
                 stage = Stage::PickSsid;
                 WifiMgr::beginScan();
@@ -292,10 +293,10 @@ bool run(TFT_eSPI& tft) {
                         tft.fillScreen(TFT_BLACK);
                         tft.setCursor(10, 10);
                         tft.setTextColor(TFT_RED, TFT_BLACK);
-                        tft.println("Already 3 networks saved.");
+                        tft.println(I18n::t(StringId::WIFI_ALREADY_3));
                         tft.setTextColor(TFT_WHITE, TFT_BLACK);
                         tft.setCursor(10, 30);
-                        tft.println("Remove one first.");
+                        tft.println(I18n::t(StringId::WIFI_REMOVE_ONE_FIRST));
                         delay(1600);
                         skipped = true;
                         break;
@@ -305,7 +306,7 @@ bool run(TFT_eSPI& tft) {
                     tft.fillScreen(TFT_BLACK);
                     tft.setCursor(10, 10);
                     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-                    tft.println("Connecting...");
+                    tft.println(I18n::t(StringId::WIFI_CONNECTING));
                 } else if (backBtn.contains(tap.x, tap.y)) {
                     stage = Stage::PickSsid;
                     needsRedraw = true;
@@ -339,10 +340,10 @@ bool run(TFT_eSPI& tft) {
             tft.fillRect(0, 0, Config::SCREEN_WIDTH, KB_TOP - 4, TFT_BLACK);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
             tft.setCursor(10, 6);
-            tft.printf("WiFi: %s", ssidList[selectedIndex].c_str());
+            tft.printf("%s%s", I18n::t(StringId::WIFI_LABEL_PREFIX), ssidList[selectedIndex].c_str());
             tft.setCursor(10, 22);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.println("Password:");
+            tft.println(I18n::t(StringId::WIFI_PASSWORD_LABEL));
             tft.fillRect(8, 38, Config::SCREEN_WIDTH - 16, 22, TFT_NAVY);
             tft.drawRect(8, 38, Config::SCREEN_WIDTH - 16, 22, TFT_DARKGREY);
             tft.setCursor(12, 44);
@@ -367,9 +368,9 @@ bool run(TFT_eSPI& tft) {
             Rect spaceBtn   = {SIDE_MARGIN, rowYFn, 150, ROW_H};
             Rect connectBtn = {SIDE_MARGIN + 154, rowYFn, Config::SCREEN_WIDTH - 2*SIDE_MARGIN - 154, ROW_H};
             Rect backBtn    = {SIDE_MARGIN, (int16_t)(rowYFn + ROW_H + ROW_GAP), (int16_t)(Config::SCREEN_WIDTH - 2*SIDE_MARGIN), 28};
-            drawButton(tft, spaceBtn, "Space");
-            drawButton(tft, connectBtn, "Connect");
-            drawButton(tft, backBtn, "Back to list");
+            drawButton(tft, spaceBtn, I18n::t(StringId::WIFI_SPACE));
+            drawButton(tft, connectBtn, I18n::t(StringId::WIFI_CONNECT));
+            drawButton(tft, backBtn, I18n::t(StringId::WIFI_BACK_TO_LIST_BTN));
         }
 
         delay(20);

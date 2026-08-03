@@ -1,5 +1,7 @@
 #include "location_manager.h"
 #include "config.h"
+#include "location_presets.h"
+#include "settings_store.h"
 #include <TinyGPSPlus.h>
 #include <HardwareSerial.h>
 #include <WiFi.h>
@@ -33,7 +35,7 @@ namespace {
 
     bool haveUtcOffset = false;
     int32_t utcOffsetSecs = 0;
-    bool metricUnits = true; // Standard: metrisch, bis die IP-Abfrage etwas anderes sagt
+    bool metricUnits = true;
 
     SemaphoreHandle_t mutex = nullptr;
 
@@ -128,8 +130,6 @@ void requestIpLookupIfNeeded() {
     haveUtcOffset = true;
 
     const char* countryCode = doc["countryCode"] | "";
-    // Nur die USA nutzen (fuer diesen Zweck) Fuss statt Meter. Bei Bedarf
-    // hier weitere Laender ergaenzen (z.B. "LR", "MM").
     metricUnits = (strcmp(countryCode, "US") != 0);
 
     persistLocationAndSource(lat, lon, Source::IpGeolocation);
@@ -137,6 +137,12 @@ void requestIpLookupIfNeeded() {
 }
 
 void getHomeLocation(double& lat, double& lon) {
+    int8_t presetIdx = LocationPresets::activeIndex();
+    if (presetIdx >= 0) {
+        LocationPresets::getLatLon((uint8_t)presetIdx, lat, lon);
+        return;
+    }
+
     if (gps.location.isValid()) {
         lat = gps.location.lat();
         lon = gps.location.lng();
@@ -151,6 +157,8 @@ void getHomeLocation(double& lat, double& lon) {
 }
 
 Source currentSource() {
+    if (LocationPresets::activeIndex() >= 0) return Source::Manual;
+
     xSemaphoreTake(mutex, portMAX_DELAY);
     Source s = source;
     xSemaphoreGive(mutex);
@@ -187,6 +195,11 @@ bool hasGpsFix() { return gps.location.isValid(); }
 
 bool hasUtcOffset() { return haveUtcOffset; }
 int32_t utcOffsetSeconds() { return utcOffsetSecs; }
-bool useMetricUnits() { return metricUnits; }
+bool useMetricUnits() {
+    uint8_t mode = SettingsStore::unitsMode();
+    if (mode == 1) return true;
+    if (mode == 2) return false;
+    return metricUnits;
+}
 
 }

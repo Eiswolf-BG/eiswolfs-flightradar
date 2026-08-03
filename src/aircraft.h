@@ -5,24 +5,25 @@ struct Aircraft {
     char     callsign[9] = {0};
     char     reg[9]      = {0};
     char     typeCode[5] = {0};
-    char     squawk[5]   = {0}; // 4-stelliger Transponder-Code, z.B. "7700" (Notfall)
+    char     squawk[5]   = {0};
+    char     category[3] = {0};
 
     float    lat            = 0;
     float    lon            = 0;
-    int32_t  altBaroFt      = 0;    // barometric altitude, ft
-    int16_t  vertRateFtMin  = 0;    // vertical speed, ft/min (+climb / -descend)
+    int32_t  altBaroFt      = 0;
+    int16_t  vertRateFtMin  = 0;
     float    groundSpeedKt  = 0;
-    float    headingDeg     = 0;    // track/heading
+    float    headingDeg     = 0;
 
-    float    distanceKm     = 0;    // computed relative to home, via Haversine
-    float    bearingDeg     = 0;    // computed relative to home
+    float    distanceKm     = 0;
+    float    bearingDeg     = 0;
 
-    uint32_t lastSeenMs     = 0;    // millis() at last update, for stale-entry eviction
-    bool     alerted        = false;// whether proximity beep already fired this pass
+    uint32_t lastSeenMs     = 0;
+    bool     alerted        = false;
     uint32_t alertedAtMs    = 0;
 
     bool     valid          = false;
 
-    char     airlineName[24] = {0}; // resolved from callsign ICAO prefix
-    uint16_t estSeats         = 0;  // rough capacity estimate from typeCode, 0 = unknown
+    char     airlineName[24] = {0};
+    uint16_t estSeats         = 0;
 };

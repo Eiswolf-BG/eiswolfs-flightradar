@@ -2,6 +2,7 @@
 #include "flight_logbook.h"
 #include "touch_input.h"
 #include "config.h"
+#include "i18n.h"
 
 namespace LogbookFilesScreen {
 
@@ -27,6 +28,14 @@ namespace {
 }
 
 void run(TFT_eSPI& tft) {
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setCursor(10, 8);
+    tft.println(I18n::t(StringId::LOGFILES_TITLE));
+    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    tft.setCursor(10, 30);
+    tft.print(I18n::t(StringId::LOADING));
+
     FlightLogbook::DayEntry days[MAX_DAYS_QUERIED];
     uint8_t count = FlightLogbook::listDays(days, MAX_DAYS_QUERIED);
 
@@ -35,12 +44,12 @@ void run(TFT_eSPI& tft) {
     tft.fillScreen(TFT_BLACK);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setCursor(10, 8);
-    tft.println("Logbook files");
+    tft.println(I18n::t(StringId::LOGFILES_TITLE));
 
     if (count == 0) {
         tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
         tft.setCursor(10, 40);
-        tft.println("No logbook entries yet.");
+        tft.println(I18n::t(StringId::LOGFILES_EMPTY));
     } else {
         uint8_t startIdx = (count > VISIBLE_ROWS) ? (count - VISIBLE_ROWS) : 0;
         int16_t y = 30;
@@ -48,7 +57,8 @@ void run(TFT_eSPI& tft) {
         if (count > VISIBLE_ROWS) {
             tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
             tft.setCursor(10, y);
-            tft.printf("Showing last %d of %d days", VISIBLE_ROWS, count);
+            tft.print(String(I18n::t(StringId::LOGFILES_SHOWING_PREFIX)) + VISIBLE_ROWS +
+                      I18n::t(StringId::LOGFILES_OF) + count + I18n::t(StringId::LOGFILES_DAYS_SUFFIX));
             y += 16;
         }
 
@@ -58,12 +68,12 @@ void run(TFT_eSPI& tft) {
             tft.print(days[i].date);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
             tft.setCursor(110, y);
-            tft.printf("%lu aircraft", (unsigned long)days[i].count);
+            tft.print(String(days[i].count) + I18n::t(StringId::LOGFILES_AIRCRAFT_SUFFIX));
             y += 20;
         }
     }
 
-    drawButton(tft, backBtn, "Back");
+    drawButton(tft, backBtn, I18n::t(StringId::BACK));
 
     bool done = false;
     while (!done) {

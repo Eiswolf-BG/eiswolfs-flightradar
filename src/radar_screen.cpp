@@ -10,6 +10,8 @@
 #include "led_alert.h"
 #include "location_manager.h"
 #include "world_map.h"
+#include "airline_filter.h"
+#include "i18n.h"
 #include <math.h>
 
 namespace RadarScreen {
@@ -42,7 +44,7 @@ namespace {
         return L;
     }
 
-    constexpr int16_t DETAIL_PANEL_H = 150;
+    constexpr int16_t DETAIL_PANEL_H = 190;
 
     struct HitPoint {
         int16_t x, y;
@@ -212,15 +214,8 @@ namespace {
         }
     }
 
-    // Dezente Weltkarten-Silhouette als Hintergrund-Layer, wie bei einem
-    // klassischen ATC-Radarschirm - rein dekorativ (nicht massstabsgetreu
-    // zu den Entfernungsringen). Wird auf das quadratische Kreis-Layout
-    // gestreckt (die Karte ist 2:1, der Kreis-Bereich 1:1 - das verzerrt
-    // die Kontinente etwas in der Hoehe, faellt aber bei dieser Groesse
-    // kaum auf und haelt die Zeichenlogik einfach). Wird NUR bei render()
-    // gezeichnet, NICHT bei jedem Sweep-Tick (zu teuer fuer 12x/Sekunde).
     void drawWorldMap(TFT_eSPI& gfx, const Layout& L) {
-        constexpr uint16_t dim = 0x0320; // sehr gedaempftes Gruen
+        constexpr uint16_t dim = 0x0320;
         float scaleX = (2.0f * L.radius) / WorldMap::GRID_W;
         float scaleY = (2.0f * L.radius) / WorldMap::GRID_H;
         int32_t radiusSq = (int32_t)(L.radius - 2) * (L.radius - 2);
@@ -274,8 +269,8 @@ namespace {
     struct PanelState {
         bool valid = false;
         char hex[7] = {0};
-        String callsignText, airlineText, modelText,
-               altText, speedText, distHeadingText, seatsText;
+        String callsignText, airlineText, modelText, typeText,
+               altText, speedText, climbText, distHeadingText, squawkText, seatsText;
     };
     PanelState lastPanel;
 
@@ -322,43 +317,59 @@ namespace {
                    String(a.airlineName), forceFull);
         y += 15;
 
-        String modelLine;
-        if (details.loading) {
-            modelLine = "Model: loading...";
-        } else if (details.model[0]) {
-            modelLine = String("Model: ") + details.model;
-        } else {
-            modelLine = String("Type: ") + (a.typeCode[0] ? a.typeCode : "unknown");
-        }
+        String modelLine = details.loading
+            ? String(I18n::t(StringId::DETAIL_MODEL)) + I18n::t(StringId::DETAIL_LOADING_DOTS)
+            : String(I18n::t(StringId::DETAIL_MODEL)) + (details.model[0] ? details.model : I18n::t(StringId::DETAIL_UNKNOWN));
         updateLine(gfx, y, 15, textMaxWidth, TFT_WHITE, lastPanel.modelText, modelLine, forceFull);
         y += 15;
 
-        char buf[40];
-        snprintf(buf, sizeof(buf), "Alt: %.0fm / %.0fft",
+        String typeLine = String(I18n::t(StringId::DETAIL_TYPE)) + (a.typeCode[0] ? a.typeCode : I18n::t(StringId::DETAIL_UNKNOWN));
+        updateLine(gfx, y, 15, textMaxWidth, TFT_WHITE, lastPanel.typeText, typeLine, forceFull);
+        y += 15;
+
+        char buf[48];
+        snprintf(buf, sizeof(buf), "%s%.0fm / %.0fft", I18n::t(StringId::DETAIL_ALT),
                  Units::feetToMeters((float)a.altBaroFt), (float)a.altBaroFt);
         updateLine(gfx, y, 15, textMaxWidth, TFT_WHITE, lastPanel.altText, String(buf), forceFull);
         y += 15;
 
-        snprintf(buf, sizeof(buf), "Speed: %.0fkm/h / %.0fkt",
+        snprintf(buf, sizeof(buf), "%s%.0fkm/h / %.0fkt", I18n::t(StringId::DETAIL_SPEED),
                  Units::ktToKmh(a.groundSpeedKt), a.groundSpeedKt);
         updateLine(gfx, y, 15, textMaxWidth, TFT_WHITE, lastPanel.speedText, String(buf), forceFull);
         y += 15;
 
-        snprintf(buf, sizeof(buf), "Dist: %.0fkm / %.0fnm   Hdg: %.0f",
-                 a.distanceKm, Units::kmToNm(a.distanceKm), a.headingDeg);
+        String climbLine;
+        if (a.vertRateFtMin > 100) {
+            snprintf(buf, sizeof(buf), "%s+%dft/min", I18n::t(StringId::DETAIL_CLIMB), a.vertRateFtMin);
+            climbLine = buf;
+        } else if (a.vertRateFtMin < -100) {
+            snprintf(buf, sizeof(buf), "%s%dft/min", I18n::t(StringId::DETAIL_DESCENT), a.vertRateFtMin);
+            climbLine = buf;
+        } else {
+            climbLine = I18n::t(StringId::DETAIL_LEVEL);
+        }
+        updateLine(gfx, y, 15, textMaxWidth, TFT_WHITE, lastPanel.climbText, climbLine, forceFull);
+        y += 15;
+
+        snprintf(buf, sizeof(buf), "%s%.0fkm / %.0fnm   %s%.0f", I18n::t(StringId::DETAIL_DIST),
+                 a.distanceKm, Units::kmToNm(a.distanceKm), I18n::t(StringId::DETAIL_HDG), a.headingDeg);
         updateLine(gfx, y, 15, textMaxWidth, TFT_WHITE, lastPanel.distHeadingText, String(buf), forceFull);
         y += 15;
 
+        String squawkLine = String(I18n::t(StringId::DETAIL_SQUAWK)) + (a.squawk[0] ? a.squawk : I18n::t(StringId::DETAIL_UNKNOWN));
+        updateLine(gfx, y, 15, textMaxWidth, TFT_WHITE, lastPanel.squawkText, squawkLine, forceFull);
+        y += 15;
+
         String seatsLine = a.estSeats > 0
-            ? String("Seats (estimated): ") + a.estSeats
-            : String("Seats: unknown");
+            ? String(I18n::t(StringId::DETAIL_SEATS_EST)) + a.estSeats
+            : String(I18n::t(StringId::DETAIL_SEATS_UNKNOWN));
         updateLine(gfx, y, 15, textMaxWidth, TFT_WHITE, lastPanel.seatsText, seatsLine, forceFull);
         y += 18;
 
         if (forceFull) {
             gfx.setTextColor(TFT_DARKGREY, TFT_NAVY);
             gfx.setCursor(8, y);
-            gfx.print("Tap elsewhere to close");
+            gfx.print(I18n::t(StringId::DETAIL_TAP_CLOSE));
         }
 
         lastPanel.valid = true;
@@ -429,6 +440,10 @@ void render(TFT_eSPI& tft, int16_t top) {
         Aircraft& a = snapshot[i];
         if (a.distanceKm > rangeKm * 1.05f) continue;
 
+        if (SettingsStore::hideGroundVehicles() && a.category[0] == 'C') continue;
+
+        if (AirlineFilter::isHidden(a.callsign)) continue;
+
         RadarMath::PolarCoord polar{a.distanceKm, a.bearingDeg};
         RadarMath::ScreenPoint pt = RadarMath::toScreen(polar, L.cx, L.cy, L.radius, rangeKm);
 
@@ -482,7 +497,7 @@ void render(TFT_eSPI& tft, int16_t top) {
         tft.drawFastHLine(0, infoTop, Config::SCREEN_WIDTH, TFT_DARKGREY);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
         tft.setCursor(8, infoTop + 6);
-        tft.print("Tap for details");
+        tft.print(I18n::t(StringId::RADAR_TAP_FOR_DETAILS));
 
         char rangeLabel[8];
         snprintf(rangeLabel, sizeof(rangeLabel), "%.0fkm", rangeKm);

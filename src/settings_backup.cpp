@@ -1,0 +1,60 @@
+#include "settings_backup.h"
+#include "config.h"
+#include "sd_mutex.h"
+#include "sd_storage.h"
+#include <SD.h>
+
+namespace SettingsBackup {
+
+namespace {
+    constexpr const char* WIFI_BACKUP_FILE = "/Flightradar_cyd/wifi_backup.txt";
+    constexpr const char* SETTINGS_BACKUP_FILE = "/Flightradar_cyd/config_backup.txt";
+
+    bool copyFile(const char* srcPath, const char* dstPath) {
+        if (!SD.exists(srcPath)) return false;
+
+        File src = SD.open(srcPath, FILE_READ);
+        if (!src) return false;
+
+        File dst = SD.open(dstPath, FILE_WRITE);
+        if (!dst) { src.close(); return false; }
+
+        constexpr size_t BUF_SIZE = 512;
+        static uint8_t buf[BUF_SIZE];
+        while (src.available()) {
+            size_t n = src.read(buf, BUF_SIZE);
+            dst.write(buf, n);
+            yield();
+        }
+
+        src.close();
+        dst.close();
+        return true;
+    }
+}
+
+bool backup() {
+    if (!SdStorage::isMounted()) return false;
+    SdMutex::Guard guard;
+
+    bool okSettings = copyFile(Config::SD_SETTINGS_FILE, SETTINGS_BACKUP_FILE);
+    bool okWifi = copyFile(Config::SD_WIFI_CREDENTIALS_FILE, WIFI_BACKUP_FILE);
+    return okSettings || okWifi;
+}
+
+bool restore() {
+    if (!SdStorage::isMounted()) return false;
+    SdMutex::Guard guard;
+
+    bool okSettings = copyFile(SETTINGS_BACKUP_FILE, Config::SD_SETTINGS_FILE);
+    bool okWifi = copyFile(WIFI_BACKUP_FILE, Config::SD_WIFI_CREDENTIALS_FILE);
+    return okSettings || okWifi;
+}
+
+bool hasBackup() {
+    if (!SdStorage::isMounted()) return false;
+    SdMutex::Guard guard;
+    return SD.exists(SETTINGS_BACKUP_FILE) || SD.exists(WIFI_BACKUP_FILE);
+}
+
+}

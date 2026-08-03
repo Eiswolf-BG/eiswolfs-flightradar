@@ -1,5 +1,6 @@
 #include "sd_storage.h"
 #include "config.h"
+#include "sd_mutex.h"
 #include <SD.h>
 #include <SPI.h>
 #include <time.h>
@@ -64,6 +65,9 @@ namespace {
 }
 
 bool init() {
+    SdMutex::init();
+    SdMutex::Guard guard;
+
     sdSpi.begin(Config::SD_SPI_CLK_PIN, Config::SD_SPI_MISO_PIN,
                 Config::SD_SPI_MOSI_PIN, Config::SD_SPI_CS_PIN);
     mounted = SD.begin(Config::SD_SPI_CS_PIN, sdSpi, 4000000);
@@ -79,12 +83,14 @@ bool isMounted() { return mounted; }
 
 void seedDefaultDataFiles() {
     if (!mounted) return;
+    SdMutex::Guard guard;
     writeIfAbsent(Config::SD_AIRLINES_CSV, kDefaultAirlinesCsv);
     writeIfAbsent(Config::SD_AIRCRAFT_TYPES_CSV, kDefaultAircraftTypesCsv);
 }
 
 void logEvent(const char* csvLine) {
     if (!mounted) return;
+    SdMutex::Guard guard;
 
     time_t now = time(nullptr);
     struct tm tmNow;

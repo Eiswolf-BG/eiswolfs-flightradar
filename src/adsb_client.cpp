@@ -1,10 +1,9 @@
-#include <WiFi.h>
 #include "adsb_client.h"
+#include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
-
 
 namespace AdsbClient {
 
@@ -71,6 +70,7 @@ FetchResult fetch(double homeLat, double homeLon, float radiusKm,
     filterAc["gs"]       = true;
     filterAc["track"]    = true;
     filterAc["squawk"]   = true;
+    filterAc["category"] = true;
 
     JsonDocument doc;
     DeserializationError err = deserializeJson(
@@ -118,6 +118,9 @@ FetchResult fetch(double homeLat, double homeLon, float radiusKm,
 
         const char* squawk = ac["squawk"] | "";
         strncpy(a.squawk, squawk, sizeof(a.squawk) - 1);
+
+        const char* category = ac["category"] | "";
+        strncpy(a.category, category, sizeof(a.category) - 1);
 
         a.lastSeenMs = millis();
         a.valid = (a.lat != 0.0f || a.lon != 0.0f);

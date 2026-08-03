@@ -1,0 +1,155 @@
+#pragma once
+#include <Arduino.h>
+
+// Zentrales Uebersetzungssystem: jeder feste UI-Text der App hat eine
+// StringId. Die eigentlichen Uebersetzungen liegen in je einer Datei pro
+// Sprache (i18n_en.h, i18n_de.h, i18n_fr.h, i18n_tr.h, i18n_es.h, i18n_it.h) -
+// jede Datei enthaelt ein Array in GENAU derselben Reihenfolge wie dieses
+// Enum. Neue Menuepunkte/Texte: hier eine neue StringId VOR COUNT einfuegen,
+// dann in ALLEN 6 Sprachdateien an derselben Position ergaenzen.
+enum class StringId : uint8_t {
+    OK = 0,
+    CANCEL,
+    BACK,
+    BACK_ARROW,
+    LOADING,
+    ADD,
+
+    ON,
+    OFF,
+    NEVER,
+
+    SPLASH_SD_OK,
+    SPLASH_CONNECTING_WIFI,
+    SPLASH_WIFI_OK_PREFIX,
+    SPLASH_WIFI_FAILED,
+    SPLASH_GETTING_LOCATION,
+    SPLASH_READY,
+
+    SD_REQUIRED_LINE1,
+    SD_REQUIRED_LINE2,
+    SD_REQUIRED_LINE3,
+    SD_REQUIRED_HINT,
+
+    CALIB_TITLE,
+    CALIB_PROMPT,
+    CALIB_TOP_LEFT,
+    CALIB_TOP_RIGHT,
+    CALIB_BOTTOM_RIGHT,
+    CALIB_BOTTOM_LEFT,
+    CALIB_SAVED,
+
+    WIFI_SCANNING,
+    WIFI_NO_NETWORKS,
+    WIFI_SELECT,
+    WIFI_CONNECTED_BANG,
+    WIFI_CONNECTION_FAILED,
+    WIFI_BACK_TO_LIST_MSG,
+    WIFI_PASSWORD_LABEL,
+    WIFI_SPACE,
+    WIFI_CONNECT,
+    WIFI_BACK_TO_LIST_BTN,
+    WIFI_ALREADY_3,
+    WIFI_REMOVE_ONE_FIRST,
+    WIFI_CONNECTING,
+    WIFI_LABEL_PREFIX,
+
+    MENU_SETTINGS,
+    MENU_SETTINGS_PAGE2,
+    MENU_CALIBRATE,
+    MENU_DISPLAY_INVERTED,
+    MENU_DISPLAY_NORMAL,
+    MENU_MANAGE_WIFI,
+    MENU_LOCATION_PRESETS,
+    MENU_SCREEN_TIMEOUT_PREFIX,
+    MENU_STATISTICS,
+    MENU_LOGBOOK_FILES,
+    MENU_MORE_SETTINGS,
+    MENU_EMERGENCY_ALERT,
+    MENU_PROXIMITY_LED,
+    MENU_LED_HEARTBEAT,
+    MENU_FLIGHT_LOGBOOK,
+    MENU_HIDE_GROUND,
+    MENU_AIRLINE_FILTER,
+    MENU_BACKUP,
+    MENU_RESTORE,
+    MENU_BACKUP_SAVED,
+    MENU_BACKUP_FAILED,
+    MENU_RESTORED,
+    MENU_RESTORE_FAILED,
+    MENU_LANGUAGE,
+    MENU_UNITS,
+
+    AIRLINE_FILTER_TITLE,
+    AIRLINE_FILTER_DESC1,
+    AIRLINE_FILTER_DESC2,
+    AIRLINE_FILTER_ADD,
+    AIRLINE_ADD_TITLE,
+
+    LOCATION_TITLE,
+    LOCATION_AUTO,
+    LOCATION_PRESET,
+    LOCATION_PRESET_EMPTY,
+    LOCATION_ADD,
+    LOCATION_LAT_PROMPT,
+    LOCATION_LON_PROMPT,
+
+    STATS_TITLE,
+    STATS_TODAY,
+    STATS_ALLTIME,
+    STATS_DAYS,
+    STATS_AVG,
+    STATS_RESET_BTN,
+    STATS_RESET_CONFIRM,
+    STATS_RESET_DONE,
+    STATS_UPTIME_PREFIX,
+
+    LOGFILES_TITLE,
+    LOGFILES_EMPTY,
+    LOGFILES_SHOWING_PREFIX,
+    LOGFILES_OF,
+    LOGFILES_DAYS_SUFFIX,
+    LOGFILES_AIRCRAFT_SUFFIX,
+
+    RADAR_TAP_FOR_DETAILS,
+
+    DETAIL_MODEL,
+    DETAIL_TYPE,
+    DETAIL_LOADING_DOTS,
+    DETAIL_UNKNOWN,
+    DETAIL_ALT,
+    DETAIL_SPEED,
+    DETAIL_DIST,
+    DETAIL_HDG,
+    DETAIL_SEATS_EST,
+    DETAIL_SEATS_UNKNOWN,
+    DETAIL_TAP_CLOSE,
+    DETAIL_CLIMB,
+    DETAIL_DESCENT,
+    DETAIL_LEVEL,
+    DETAIL_SQUAWK,
+
+    SCREENSHOT_SAVED_PREFIX,
+    SCREENSHOT_FAILED,
+
+    UNITS_TITLE,
+    UNITS_AUTO,
+    UNITS_METRIC,
+    UNITS_IMPERIAL,
+
+    LANGUAGE_TITLE,
+
+    COUNT // IMMER als letztes Element - markiert die Gesamtanzahl
+};
+
+namespace I18n {
+    constexpr uint8_t LANG_COUNT = 6;
+
+    // Liefert den uebersetzten Text fuer 'id' in der aktuell in den
+    // Einstellungen gewaehlten Sprache (SettingsStore::language()).
+    const char* t(StringId id);
+
+    // Eigennamen der Sprachen (fuer das Sprachauswahl-Menue), IMMER im
+    // jeweiligen Idiom selbst geschrieben (z.B. "Deutsch", nicht "German").
+    const char* languageName(uint8_t index);
+}
