@@ -68,6 +68,7 @@ FetchResult fetch(double homeLat, double homeLon, float radiusKm,
     filterAc["baro_rate"]= true;
     filterAc["gs"]       = true;
     filterAc["track"]    = true;
+    filterAc["squawk"]   = true;
 
     JsonDocument doc;
     DeserializationError err = deserializeJson(
@@ -112,6 +113,9 @@ FetchResult fetch(double homeLat, double homeLon, float radiusKm,
         a.vertRateFtMin = ac["baro_rate"] | 0;
         a.groundSpeedKt = ac["gs"] | 0.0f;
         a.headingDeg    = ac["track"] | 0.0f;
+
+        const char* squawk = ac["squawk"] | "";
+        strncpy(a.squawk, squawk, sizeof(a.squawk) - 1);
 
         a.lastSeenMs = millis();
         a.valid = (a.lat != 0.0f || a.lon != 0.0f);

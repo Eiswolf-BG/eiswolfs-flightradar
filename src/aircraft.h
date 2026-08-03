@@ -5,6 +5,7 @@ struct Aircraft {
     char     callsign[9] = {0};
     char     reg[9]      = {0};
     char     typeCode[5] = {0};
+    char     squawk[5]   = {0}; // 4-stelliger Transponder-Code, z.B. "7700" (Notfall)
 
     float    lat            = 0;
     float    lon            = 0;

@@ -20,4 +20,14 @@ namespace LocationManager {
 
     bool hasGpsFix();
 
+    // UTC-Offset in Sekunden (inkl. evtl. Sommerzeit), ermittelt bei der
+    // IP-Geolocation-Abfrage. 0/false, falls noch nicht bekannt.
+    bool hasUtcOffset();
+    int32_t utcOffsetSeconds();
+
+    // Ob die Region (per IP-Geolocation-Laendercode) metrische Einheiten
+    // nutzt (Meter/km) statt Fuss/Meilen. Default true (metrisch), bis die
+    // IP-Abfrage etwas anderes ermittelt hat - nur die USA nutzen aktuell
+    // eine Ausnahme.
+    bool useMetricUnits();
 }

@@ -23,8 +23,19 @@ namespace RadarScreen {
     bool handleTap(int16_t x, int16_t y, int16_t top);
 
     // Haeufig aufrufen (unabhaengig davon, ob ein Detail-Fenster offen ist):
-    // prueft, ob ein Flugzeug innerhalb des Alarmradius ist, steuert die
-    // gruene LED entsprechend und merkt sich den Blink-Zustand, damit tick()
-    // den betroffenen Punkt synchron mitblinken lassen kann.
+    // prueft, ob ein Flugzeug innerhalb des Alarmradius ist ODER ein
+    // Notfall-Squawk sendet, steuert die LED entsprechend (Notfall hat
+    // Vorrang, blinkt rot statt gruen) und merkt sich den Blink-Zustand,
+    // damit tick() den betroffenen Punkt synchron mitblinken lassen kann.
     void updateProximityAlert(uint32_t nowMs);
+
+    struct EmergencyInfo {
+        bool active = false;
+        char callsign[9] = {0};
+        char squawk[5] = {0};
+    };
+
+    // Reine Abfrage (kein Seiteneffekt): gibt das erste Flugzeug mit einem
+    // Notfall-Squawk zurueck, falls vorhanden. Fuer das Banner im Header.
+    EmergencyInfo checkEmergency();
 }

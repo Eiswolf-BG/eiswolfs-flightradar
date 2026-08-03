@@ -1,6 +1,7 @@
 #include "menu_screen.h"
 #include "touch_input.h"
 #include "calibration_screen.h"
+#include "wifi_manage_screen.h"
 #include "settings_store.h"
 #include "config.h"
 
@@ -14,6 +15,15 @@ namespace {
         }
     };
 
+    constexpr int16_t ROW_H = 30;
+    constexpr int16_t ROW_GAP = 4;
+    constexpr int16_t ROW_START_Y = 26;
+
+    Rect rowRect(uint8_t index) {
+        return {10, (int16_t)(ROW_START_Y + index * (ROW_H + ROW_GAP)),
+                (int16_t)(Config::SCREEN_WIDTH - 20), ROW_H};
+    }
+
     void drawButton(TFT_eSPI& tft, const Rect& r, const String& label) {
         tft.fillRoundRect(r.x, r.y, r.w, r.h, 4, TFT_NAVY);
         tft.drawRoundRect(r.x, r.y, r.w, r.h, 4, TFT_DARKGREY);
@@ -22,28 +32,41 @@ namespace {
         tft.drawString(label, r.x + r.w / 2, r.y + r.h / 2);
         tft.setTextDatum(TL_DATUM);
     }
+
+    String onOff(bool on) { return on ? "ON" : "OFF"; }
 }
 
 void run(TFT_eSPI& tft) {
-    Rect calibBtn = {10, 60, Config::SCREEN_WIDTH - 20, 40};
-    Rect invertBtn = {10, 112, Config::SCREEN_WIDTH - 20, 40};
-    Rect backBtn  = {10, 260, Config::SCREEN_WIDTH - 20, 40};
+    Rect calibBtn      = rowRect(0);
+    Rect invertBtn     = rowRect(1);
+    Rect wifiBtn       = rowRect(2);
+    Rect emergencyBtn  = rowRect(3);
+    Rect proximityBtn  = rowRect(4);
+    Rect logbookBtn    = rowRect(5);
+    Rect backBtn       = rowRect(6);
 
     bool done = false;
     while (!done) {
         tft.fillScreen(TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.setCursor(10, 10);
-        tft.println("Einstellungen");
+        tft.setCursor(10, 8);
+        tft.println("Settings");
 
-        drawButton(tft, calibBtn, "Touch kalibrieren");
+        drawButton(tft, calibBtn, "Calibrate touch");
+
         String invertLabel = SettingsStore::displayInverted()
-                                  ? "Display: invertiert (antippen)"
-                                  : "Display: normal (antippen)";
+                                  ? "Display: inverted (tap)"
+                                  : "Display: normal (tap)";
         drawButton(tft, invertBtn, invertLabel);
-        drawButton(tft, backBtn, "Zurueck");
 
-        // Auf genau einen Tap warten
+        drawButton(tft, wifiBtn, "Manage WiFi networks");
+
+        drawButton(tft, emergencyBtn, "Emergency alert: " + onOff(SettingsStore::emergencyAlertEnabled()));
+        drawButton(tft, proximityBtn, "Proximity LED: " + onOff(SettingsStore::proximityAlertEnabled()));
+        drawButton(tft, logbookBtn, "Flight logbook: " + onOff(SettingsStore::flightLogbookEnabled()));
+
+        drawButton(tft, backBtn, "Back");
+
         TouchInput::Point tap;
         while (true) {
             if (TouchInput::wasTapped(tap)) break;
@@ -56,6 +79,14 @@ void run(TFT_eSPI& tft) {
             bool newState = !SettingsStore::displayInverted();
             SettingsStore::setDisplayInverted(newState);
             tft.invertDisplay(newState);
+        } else if (wifiBtn.contains(tap.x, tap.y)) {
+            WifiManageScreen::run(tft);
+        } else if (emergencyBtn.contains(tap.x, tap.y)) {
+            SettingsStore::setEmergencyAlertEnabled(!SettingsStore::emergencyAlertEnabled());
+        } else if (proximityBtn.contains(tap.x, tap.y)) {
+            SettingsStore::setProximityAlertEnabled(!SettingsStore::proximityAlertEnabled());
+        } else if (logbookBtn.contains(tap.x, tap.y)) {
+            SettingsStore::setFlightLogbookEnabled(!SettingsStore::flightLogbookEnabled());
         } else if (backBtn.contains(tap.x, tap.y)) {
             done = true;
         }

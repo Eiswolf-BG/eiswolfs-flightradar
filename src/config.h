@@ -3,10 +3,8 @@
 
 namespace Config {
     constexpr const char* IP_GEO_HOST = "ip-api.com";
-    constexpr const char* IP_GEO_PATH = "/json/?fields=status,lat,lon";
+    constexpr const char* IP_GEO_PATH = "/json/?fields=status,lat,lon,offset,countryCode";
 
-    // Kein GPS-Modul am CYD angeschlossen - Platzhalter, falls spaeter eins
-    // per Erweiterungspins nachgeruestet wird.
     struct GpsPinPair { uint8_t rx; uint8_t tx; const char* label; };
     constexpr GpsPinPair GPS_PIN_CANDIDATES[] = {
         {22, 27, "G22/G27"}
@@ -25,16 +23,11 @@ namespace Config {
 
     constexpr float DEFAULT_PROXIMITY_ALERT_KM = 8.0f;
 
-    // Radius, innerhalb dessen die rueckseitige RGB-LED (gruen) blinkt, um auf
-    // ein nahes Flugzeug hinzuweisen (Ersatz fuer den fehlenden Lautsprecher
-    // beim CYD).
     constexpr float LED_ALERT_RADIUS_KM = 3.0f;
     constexpr uint32_t ALERT_RETRIGGER_COOLDOWN_MS = 30000;
 
     constexpr uint8_t MAX_TRACKED_AIRCRAFT = 40;
 
-    // Eigener Ordner, getrennt vom Cardputer-Projekt (das nutzt /adsb_radar) -
-    // so kann dieselbe SD-Karte in beiden Geraeten verwendet werden.
     constexpr const char* SD_ROOT_DIR              = "/Flightradar_cyd";
     constexpr const char* SD_AIRLINES_CSV          = "/Flightradar_cyd/airlines.csv";
     constexpr const char* SD_AIRCRAFT_TYPES_CSV    = "/Flightradar_cyd/aircraft_types.csv";
@@ -43,13 +36,11 @@ namespace Config {
     constexpr const char* SD_WIFI_CREDENTIALS_FILE = "/Flightradar_cyd/wifi.txt";
     constexpr const char* SD_CALIBRATION_FILE      = "/Flightradar_cyd/calibration.txt";
 
-    // microSD-Slot beim CYD (ESP32-2432S028): eigener SPI-Bus, Standard-VSPI-Pins.
     constexpr uint8_t SD_SPI_CS_PIN   = 5;
     constexpr uint8_t SD_SPI_MOSI_PIN = 23;
     constexpr uint8_t SD_SPI_MISO_PIN = 19;
     constexpr uint8_t SD_SPI_CLK_PIN  = 18;
 
-    // Touch-Controller (XPT2046), eigener SPI-Bus, getrennt von Display und SD.
     constexpr uint8_t TOUCH_CLK_PIN  = 25;
     constexpr uint8_t TOUCH_CS_PIN   = 33;
     constexpr uint8_t TOUCH_MOSI_PIN = 32;
@@ -59,7 +50,6 @@ namespace Config {
     constexpr int16_t SCREEN_WIDTH  = 240;
     constexpr int16_t SCREEN_HEIGHT = 320;
 
-    // Fuer spaetere Naeherungs-Alarme (Phase 4: Bildschirmrand blinkt statt LED)
     constexpr float ZONE_BLUE_KM   = 25.0f;
     constexpr float ZONE_YELLOW_KM = 10.0f;
     constexpr float ZONE_AMBER_KM  = 5.0f;
@@ -67,4 +57,11 @@ namespace Config {
 
     constexpr uint16_t COLOR_LOW_ALT_THRESHOLD_FT  = 10000;
     constexpr uint16_t COLOR_MID_ALT_THRESHOLD_FT  = 30000;
+
+    // Notfall-Squawk-Codes: 7500 (Entfuehrung), 7600 (Funkausfall), 7700 (allg. Notfall)
+    constexpr const char* EMERGENCY_SQUAWKS[] = {"7500", "7600", "7700"};
+    constexpr uint8_t EMERGENCY_SQUAWK_COUNT = 3;
+
+    // Maximal gespeicherte WLAN-Netzwerke (z.B. Zuhause, Auto-Hotspot, Arbeit)
+    constexpr uint8_t MAX_WIFI_NETWORKS = 3;
 }

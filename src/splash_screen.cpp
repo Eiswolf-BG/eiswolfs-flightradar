@@ -10,20 +10,33 @@ namespace {
     constexpr int16_t STATUS_START_Y = 260;
     constexpr uint8_t MAX_STATUS_LINES = 3;
 
-    // Einfache Vektor-Silhouette eines Flugzeugs von oben (keine Bilddatei
-    // eingebunden, daher per Dreiecken gezeichnet) - in Gruen, wie der
-    // Radar-Sweep-Strahl, passend zum restlichen Dark-Theme.
+    // Dezente konzentrische Ringe + Fadenkreuz als "Zielfernrohr"-Hintergrund,
+    // in gedaempftem Gruen (gleicher Ton wie die Sweep-Nachzieh-Linie im
+    // Radar-Bildschirm), damit das Flugzeug wie ins Visier genommen wirkt.
+    void drawRadarReticle(TFT_eSPI& tft, int16_t cx, int16_t cy) {
+        uint16_t dim = 0x0320;
+        tft.drawCircle(cx, cy, 112, dim);
+        tft.drawCircle(cx, cy, 76, dim);
+        tft.drawCircle(cx, cy, 40, dim);
+        tft.drawFastHLine(cx - 112, cy, 224, dim);
+        tft.drawFastVLine(cx, cy - 112, 224, dim);
+    }
+
+    // Einfache Vektor-Silhouette eines schlanken Duesenjets von oben (keine
+    // Bilddatei eingebunden, daher per Dreiecken gezeichnet) - nur als Umriss
+    // (nicht ausgefuellt), in Gruen, passend zum restlichen Dark-Theme.
     void drawAirplane(TFT_eSPI& tft, int16_t cx) {
         uint16_t color = TFT_GREEN;
 
-        // Rumpf
-        tft.fillTriangle(cx, 110, cx - 12, 240, cx + 12, 240, color);
+        // Schlanker Rumpf (nur Umriss)
+        tft.drawTriangle(cx, 105, cx - 6, 255, cx + 6, 255, color);
 
-        // Haupttragflaechen
-        tft.fillTriangle(cx, 170, cx - 110, 230, cx + 110, 230, color);
+        // Deltafluegel, nach hinten gepfeilt (nur Umriss)
+        tft.drawTriangle(cx, 160, cx - 100, 235, cx, 200, color);
+        tft.drawTriangle(cx, 160, cx + 100, 235, cx, 200, color);
 
-        // Leitwerk (Heckfluegel)
-        tft.fillTriangle(cx, 232, cx - 35, 250, cx + 35, 250, color);
+        // Kleines Leitwerk (Hoehenruder) am Heck (nur Umriss)
+        tft.drawTriangle(cx, 250, cx - 22, 268, cx + 22, 268, color);
     }
 }
 
@@ -33,6 +46,7 @@ void begin(TFT_eSPI& tft) {
     int16_t cx = tft.width() / 2;
 
     tft.fillScreen(TFT_BLACK);
+    drawRadarReticle(tft, cx, 185);
     drawAirplane(tft, cx);
 
     tft.setTextDatum(MC_DATUM);

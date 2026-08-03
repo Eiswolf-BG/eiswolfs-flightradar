@@ -18,7 +18,6 @@ namespace {
     TinyGPSPlus gps;
     HardwareSerial gpsSerial(1);
 
-
     bool gpsEnabled = false;
     uint8_t gpsPinIndex = 0;
     bool gpsSerialStarted = false;
@@ -32,9 +31,10 @@ namespace {
 
     Source source = Source::None;
 
-    // Schuetzt lastLat/lastLon/havePersisted/source: der Netzwerk-Task (Core 0)
-    // schreibt diese Werte, der Render-Loop (Core 1) liest sie ueber
-    // getHomeLocation()/currentSource().
+    bool haveUtcOffset = false;
+    int32_t utcOffsetSecs = 0;
+    bool metricUnits = true; // Standard: metrisch, bis die IP-Abfrage etwas anderes sagt
+
     SemaphoreHandle_t mutex = nullptr;
 
     void startGpsSerialIfNeeded() {
@@ -44,9 +44,6 @@ namespace {
         gpsSerialStarted = true;
     }
 
-    // Schreibt lastLat/lastLon/havePersisted UND setzt 'source' gleich mit,
-    // damit beide unter demselben Lock aktualisiert werden (kein Zwischenzustand
-    // sichtbar fuer den lesenden Core).
     void persistLocationAndSource(double lat, double lon, Source newSource) {
         prefs.putDouble("homeLat", lat);
         prefs.putDouble("homeLon", lon);
@@ -127,6 +124,14 @@ void requestIpLookupIfNeeded() {
     double lon = doc["lon"] | 0.0;
     if (lat == 0.0 && lon == 0.0) return;
 
+    utcOffsetSecs = doc["offset"] | 0;
+    haveUtcOffset = true;
+
+    const char* countryCode = doc["countryCode"] | "";
+    // Nur die USA nutzen (fuer diesen Zweck) Fuss statt Meter. Bei Bedarf
+    // hier weitere Laender ergaenzen (z.B. "LR", "MM").
+    metricUnits = (strcmp(countryCode, "US") != 0);
+
     persistLocationAndSource(lat, lon, Source::IpGeolocation);
     ipLookupDone = true;
 }
@@ -179,5 +184,9 @@ const char* currentGpsPinLabel() {
 }
 
 bool hasGpsFix() { return gps.location.isValid(); }
+
+bool hasUtcOffset() { return haveUtcOffset; }
+int32_t utcOffsetSeconds() { return utcOffsetSecs; }
+bool useMetricUnits() { return metricUnits; }
 
 }

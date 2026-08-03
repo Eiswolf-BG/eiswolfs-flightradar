@@ -7,6 +7,7 @@
 #include "aircraft.h"
 #include "settings_store.h"
 #include "aircraft_details.h"
+#include "flight_logbook.h"
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -18,11 +19,6 @@ namespace {
     TaskHandle_t taskHandle = nullptr;
     uint32_t lastFetchMs = 0;
 
-    // Eigener Zwischenspeicher fuer die Netzwerk-Antwort. Die eigentliche
-    // AircraftTable wird NUR fuer den kurzen Kopiervorgang gesperrt, NICHT
-    // waehrend der (langsamen) Netzwerkabfrage selbst - sonst friert der
-    // Radar-Bildschirm fuer die Dauer der HTTPS-Anfrage ein, weil er auf
-    // denselben Lock wartet.
     Aircraft tempTable[Config::MAX_TRACKED_AIRCRAFT];
 
     void taskFunc(void*) {
@@ -30,9 +26,6 @@ namespace {
             WifiMgr::update();
             LocationManager::update();
 
-            // Erledigt eine evtl. anstehende Detail-Abfrage (Modell/Route)
-            // fuer das aktuell vom Nutzer ausgewaehlte Flugzeug, falls es eine
-            // gibt. Guenstig, wenn nichts ansteht (nur ein Mutex-Check).
             AircraftDetails::update();
 
             if (millis() - lastFetchMs >= Config::FETCH_INTERVAL_MS) {
@@ -46,10 +39,6 @@ namespace {
 
                     float rangeKm = Config::RANGE_STEPS_KM[SettingsStore::rangeIndex()];
 
-                    // Netzwerkabfrage OHNE Lock - schreibt nur in den lokalen
-                    // Zwischenspeicher, den sonst niemand anfasst. Der
-                    // Radar-Bildschirm kann waehrenddessen ganz normal mit den
-                    // ALTEN Daten weiterzeichnen.
                     auto result = AdsbClient::fetch(lat, lon, rangeKm,
                                                      tempTable, Config::MAX_TRACKED_AIRCRAFT);
 
@@ -59,6 +48,8 @@ namespace {
                                sizeof(Aircraft) * Config::MAX_TRACKED_AIRCRAFT);
                         AircraftTable::postFetchUpdate(lat, lon);
                         AircraftTable::unlock();
+
+                        FlightLogbook::update();
                     } else {
                         Serial.printf("[NetTask] Abfrage fehlgeschlagen (HTTP %d)\n", result.httpCode);
                     }
@@ -74,11 +65,11 @@ void begin() {
     xTaskCreatePinnedToCore(
         taskFunc,
         "NetTask",
-        20480,     // Stack: TLS-Handshake + JSON-Parsing braucht mehr als das Minimum
+        20480,
         nullptr,
-        1,         // Prioritaet
+        1,
         &taskHandle,
-        0          // Core 0 (Core 1 bleibt frei fuer Rendering/Touch im main-Loop)
+        0
     );
 }
 

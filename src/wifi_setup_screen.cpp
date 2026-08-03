@@ -17,11 +17,10 @@ namespace {
 
     struct KeyDef {
         KeyType type;
-        char ch;          // fuer KeyType::Char (Kleinbuchstabe/Grundzeichen)
-        const char* label; // Anzeige, falls kein einzelnes Zeichen (z.B. "<-")
+        char ch;
+        const char* label;
     };
 
-    // --- Tastatur-Layout ---------------------------------------------------
     constexpr KeyDef ROW_LETTERS_A[] = {
         {KeyType::Char,'q',nullptr},{KeyType::Char,'w',nullptr},{KeyType::Char,'e',nullptr},
         {KeyType::Char,'r',nullptr},{KeyType::Char,'t',nullptr},{KeyType::Char,'y',nullptr},
@@ -79,11 +78,11 @@ namespace {
     uint8_t passwordLen = 0;
 
     bool shiftOn = false;
-    uint8_t page = 0; // 0 = Buchstaben, 1 = Symbole
+    uint8_t page = 0;
 
     bool skipped = false;
     bool connectSucceeded = false;
-    bool needsRedraw = true; // nur neu zeichnen, wenn sich wirklich was geaendert hat (verhindert Flackern)
+    bool needsRedraw = true;
 
     Rect cancelBtn = {Config::SCREEN_WIDTH - 34, 4, 30, 24};
 
@@ -97,7 +96,6 @@ namespace {
         tft.setTextDatum(TL_DATUM);
     }
 
-    // Rechnet die Rects einer Tastenreihe aus (gleich verteilt ueber die Breite).
     template <size_t N>
     void layoutRow(const KeyDef (&row)[N], int16_t y, Rect outRects[N]) {
         int16_t usableW = Config::SCREEN_WIDTH - 2 * SIDE_MARGIN;
@@ -184,10 +182,10 @@ bool run(TFT_eSPI& tft) {
     WifiMgr::beginScan();
 
     tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setTextSize(1);
     tft.setCursor(10, 10);
-    tft.println("WLAN-Suche laeuft...");
+    tft.println("Scanning WiFi...");
     drawCancelButton(tft);
 
     while (!skipped) {
@@ -199,7 +197,6 @@ bool run(TFT_eSPI& tft) {
             break;
         }
 
-        // --- Uebergaenge, die nicht vom Touch kommen -----------------------
         if (stage == Stage::Scanning && WifiMgr::isScanComplete()) {
             ssidCount = (uint8_t)min((int)WifiMgr::getScanResultCount(), (int)MAX_LIST);
             for (uint8_t i = 0; i < ssidCount; i++) ssidList[i] = WifiMgr::getScanResultSSID(i);
@@ -208,8 +205,8 @@ bool run(TFT_eSPI& tft) {
 
             tft.fillScreen(TFT_BLACK);
             tft.setCursor(10, 10);
-            tft.setTextColor(TFT_GREEN, TFT_BLACK);
-            tft.println(ssidCount == 0 ? "Keine Netzwerke gefunden" : "WLAN waehlen:");
+            tft.setTextColor(TFT_WHITE, TFT_BLACK);
+            tft.println(ssidCount == 0 ? "No networks found" : "Select WiFi:");
             drawCancelButton(tft);
         }
 
@@ -217,12 +214,12 @@ bool run(TFT_eSPI& tft) {
             WifiMgr::update();
             if (WifiMgr::getState() == WifiMgr::State::Connected) {
                 connectSucceeded = true;
-                WifiMgr::saveCredentialsToSdIfMounted();
+                WifiMgr::addNetwork(ssidList[selectedIndex].c_str(), passwordBuf);
                 stage = Stage::Done;
                 tft.fillScreen(TFT_BLACK);
                 tft.setCursor(10, 10);
-                tft.setTextColor(TFT_GREEN, TFT_BLACK);
-                tft.println("Verbunden!");
+                tft.setTextColor(TFT_WHITE, TFT_BLACK);
+                tft.println("Connected!");
                 delay(900);
                 return true;
             } else if (WifiMgr::getState() == WifiMgr::State::Failed) {
@@ -230,10 +227,10 @@ bool run(TFT_eSPI& tft) {
                 tft.fillScreen(TFT_BLACK);
                 tft.setCursor(10, 10);
                 tft.setTextColor(TFT_RED, TFT_BLACK);
-                tft.println("Verbindung fehlgeschlagen.");
-                tft.setTextColor(TFT_GREEN, TFT_BLACK);
+                tft.println("Connection failed.");
+                tft.setTextColor(TFT_WHITE, TFT_BLACK);
                 tft.setCursor(10, 30);
-                tft.println("Zurueck zur Netzwerkliste...");
+                tft.println("Back to network list...");
                 delay(1400);
                 stage = Stage::PickSsid;
                 WifiMgr::beginScan();
@@ -241,10 +238,8 @@ bool run(TFT_eSPI& tft) {
             }
         }
 
-        // --- Touch-Eingaben je nach Stage -----------------------------------
         if (tapped && stage == Stage::PickSsid) {
             if (ssidCount > 0) {
-                // Liste
                 for (uint8_t row = 0; row < VISIBLE_ITEMS; row++) {
                     uint8_t idx = scrollOffset + row;
                     if (idx >= ssidCount) break;
@@ -256,7 +251,6 @@ bool run(TFT_eSPI& tft) {
                         needsRedraw = true;
                     }
                 }
-                // Scroll-Pfeile
                 if (ssidCount > VISIBLE_ITEMS) {
                     Rect upBtn   = {Config::SCREEN_WIDTH - 34, 34, 30, 26};
                     Rect downBtn = {Config::SCREEN_WIDTH - 34, 64 + (VISIBLE_ITEMS - 1) * 34, 30, 26};
@@ -294,22 +288,32 @@ bool run(TFT_eSPI& tft) {
                         passwordBuf[passwordLen] = 0;
                     }
                 } else if (connectBtn.contains(tap.x, tap.y)) {
-                    WifiMgr::saveCredentials(ssidList[selectedIndex].c_str(), passwordBuf);
-                    WifiMgr::beginConnect();
+                    if (WifiMgr::networkCount() >= Config::MAX_WIFI_NETWORKS) {
+                        tft.fillScreen(TFT_BLACK);
+                        tft.setCursor(10, 10);
+                        tft.setTextColor(TFT_RED, TFT_BLACK);
+                        tft.println("Already 3 networks saved.");
+                        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+                        tft.setCursor(10, 30);
+                        tft.println("Remove one first.");
+                        delay(1600);
+                        skipped = true;
+                        break;
+                    }
+                    WifiMgr::connectTo(ssidList[selectedIndex].c_str(), passwordBuf);
                     stage = Stage::Connecting;
                     tft.fillScreen(TFT_BLACK);
                     tft.setCursor(10, 10);
-                    tft.setTextColor(TFT_GREEN, TFT_BLACK);
-                    tft.println("Verbinde...");
+                    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+                    tft.println("Connecting...");
                 } else if (backBtn.contains(tap.x, tap.y)) {
                     stage = Stage::PickSsid;
                     needsRedraw = true;
                 }
             }
-            needsRedraw = true; // Tastatureingabe (Zeichen/Shift/Seite/Backspace/Leerzeichen) aendert den Bildschirm
+            needsRedraw = true;
         }
 
-        // --- Zeichnen (nur bei Aenderung, verhindert Flackern) ----------------
         if (!needsRedraw) {
             delay(20);
             continue;
@@ -333,16 +337,16 @@ bool run(TFT_eSPI& tft) {
             drawCancelButton(tft);
         } else if (stage == Stage::EnterPassword) {
             tft.fillRect(0, 0, Config::SCREEN_WIDTH, KB_TOP - 4, TFT_BLACK);
-            tft.setTextColor(TFT_GREEN, TFT_BLACK);
+            tft.setTextColor(TFT_WHITE, TFT_BLACK);
             tft.setCursor(10, 6);
-            tft.printf("WLAN: %s", ssidList[selectedIndex].c_str());
+            tft.printf("WiFi: %s", ssidList[selectedIndex].c_str());
             tft.setCursor(10, 22);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.println("Passwort:");
+            tft.println("Password:");
             tft.fillRect(8, 38, Config::SCREEN_WIDTH - 16, 22, TFT_NAVY);
             tft.drawRect(8, 38, Config::SCREEN_WIDTH - 16, 22, TFT_DARKGREY);
             tft.setCursor(12, 44);
-            tft.setTextColor(TFT_YELLOW, TFT_NAVY);
+            tft.setTextColor(TFT_WHITE, TFT_NAVY);
             tft.print(passwordBuf);
 
             int16_t rowY0 = KB_TOP;
@@ -363,15 +367,15 @@ bool run(TFT_eSPI& tft) {
             Rect spaceBtn   = {SIDE_MARGIN, rowYFn, 150, ROW_H};
             Rect connectBtn = {SIDE_MARGIN + 154, rowYFn, Config::SCREEN_WIDTH - 2*SIDE_MARGIN - 154, ROW_H};
             Rect backBtn    = {SIDE_MARGIN, (int16_t)(rowYFn + ROW_H + ROW_GAP), (int16_t)(Config::SCREEN_WIDTH - 2*SIDE_MARGIN), 28};
-            drawButton(tft, spaceBtn, "Leerzeichen");
-            drawButton(tft, connectBtn, "Verbinden");
-            drawButton(tft, backBtn, "Zurueck zur Liste");
+            drawButton(tft, spaceBtn, "Space");
+            drawButton(tft, connectBtn, "Connect");
+            drawButton(tft, backBtn, "Back to list");
         }
 
         delay(20);
     }
 
-    return false; // uebersprungen
+    return false;
 }
 
 }

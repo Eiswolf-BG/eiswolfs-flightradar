@@ -8,6 +8,7 @@
 #include "units.h"
 #include "settings_store.h"
 #include "led_alert.h"
+#include "location_manager.h"
 #include <math.h>
 
 namespace RadarScreen {
@@ -50,6 +51,7 @@ namespace {
         uint16_t color;
         float headingDeg;
         float distanceKm;
+        bool isEmergency;
     };
     constexpr uint8_t MAX_HIT_POINTS = Config::MAX_TRACKED_AIRCRAFT;
     HitPoint hitPoints[MAX_HIT_POINTS];
@@ -57,6 +59,14 @@ namespace {
     char selectedHex[7] = {0};
 
     bool ledBlinkOn = true;
+
+    bool isEmergencySquawk(const char* squawk) {
+        if (!squawk[0]) return false;
+        for (uint8_t i = 0; i < Config::EMERGENCY_SQUAWK_COUNT; i++) {
+            if (strcmp(squawk, Config::EMERGENCY_SQUAWKS[i]) == 0) return true;
+        }
+        return false;
+    }
 
     float sweepAngleDeg = 0.0f;
     float prevSweepAngleDeg = -1.0f;
@@ -89,11 +99,29 @@ namespace {
         gfx.setTextDatum(TL_DATUM);
     }
 
+    // Kleine Farb-Legende (Hoehenband -> Farbe), damit auf den ersten Blick
+    // klar ist, was Gruen/Gelb/Rot bei den Flugzeug-Punkten bedeuten. Zeigt
+    // Meter statt Fuss, wenn die Region (per Geolocation) metrisch ist.
     void drawLegend(TFT_eSPI& gfx, int16_t y) {
+        bool metric = LocationManager::useMetricUnits();
+
+        char lowLabel[10], midLabel[10], highLabel[10];
+        if (metric) {
+            int lowM = (int)(Units::feetToMeters(Config::COLOR_LOW_ALT_THRESHOLD_FT) / 100) * 100;
+            int midM = (int)(Units::feetToMeters(Config::COLOR_MID_ALT_THRESHOLD_FT) / 100) * 100;
+            snprintf(lowLabel, sizeof(lowLabel), "<%dm", lowM);
+            snprintf(midLabel, sizeof(midLabel), "%d-%dm", lowM, midM);
+            snprintf(highLabel, sizeof(highLabel), ">%dm", midM);
+        } else {
+            snprintf(lowLabel, sizeof(lowLabel), "<10k ft");
+            snprintf(midLabel, sizeof(midLabel), "10-30k");
+            snprintf(highLabel, sizeof(highLabel), ">30k ft");
+        }
+
         struct { uint16_t color; const char* label; } items[3] = {
-            {TFT_GREEN,  "<10k ft"},
-            {TFT_YELLOW, "10-30k"},
-            {TFT_RED,    ">30k ft"},
+            {TFT_GREEN,  lowLabel},
+            {TFT_YELLOW, midLabel},
+            {TFT_RED,    highLabel},
         };
         int16_t segW = Config::SCREEN_WIDTH / 3;
         gfx.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -290,6 +318,7 @@ void render(TFT_eSPI& tft, int16_t top) {
 
         uint16_t color = colorForAltitude(a.altBaroFt);
         bool isSelected = selectedHex[0] && strcmp(a.hex, selectedHex) == 0;
+        bool isEmergency = SettingsStore::emergencyAlertEnabled() && isEmergencySquawk(a.squawk);
 
         if (isSelected) {
             tft.drawCircle(pt.x, pt.y, 9, TFT_WHITE);
@@ -297,6 +326,10 @@ void render(TFT_eSPI& tft, int16_t top) {
             selected = a;
         }
         tft.fillCircle(pt.x, pt.y, 5, color);
+
+        if (isEmergency) {
+            tft.drawCircle(pt.x, pt.y, 12, TFT_RED);
+        }
 
         double rad = a.headingDeg * PI / 180.0;
         int16_t dx = (int16_t)(sin(rad) * 10);
@@ -315,6 +348,7 @@ void render(TFT_eSPI& tft, int16_t top) {
         hitPoints[i].color = color;
         hitPoints[i].headingDeg = a.headingDeg;
         hitPoints[i].distanceKm = a.distanceKm;
+        hitPoints[i].isEmergency = isEmergency;
         strncpy(hitPoints[i].hex, a.hex, sizeof(hitPoints[i].hex) - 1);
         strncpy(hitPoints[i].callsign, a.callsign, sizeof(hitPoints[i].callsign) - 1);
     }
@@ -375,6 +409,10 @@ void tick(TFT_eSPI& tft, int16_t top, uint32_t deltaMs) {
 
         tft.fillCircle(hp.x, hp.y, 5, hp.color);
 
+        if (hp.isEmergency) {
+            tft.drawCircle(hp.x, hp.y, 12, TFT_RED);
+        }
+
         double rad = hp.headingDeg * PI / 180.0;
         int16_t dx = (int16_t)(sin(rad) * 10);
         int16_t dy = (int16_t)(-cos(rad) * 10);
@@ -429,18 +467,47 @@ bool handleTap(int16_t x, int16_t y, int16_t top) {
 
 void updateProximityAlert(uint32_t nowMs) {
     bool anyClose = false;
+    bool anyEmergency = false;
+
+    bool proximityOn = SettingsStore::proximityAlertEnabled();
+    bool emergencyOn = SettingsStore::emergencyAlertEnabled();
+
+    if (proximityOn || emergencyOn) {
+        AircraftTable::lock();
+        Aircraft* table = AircraftTable::raw();
+        for (uint8_t i = 0; i < AircraftTable::capacity(); i++) {
+            if (!table[i].valid) continue;
+            if (proximityOn && table[i].distanceKm <= Config::LED_ALERT_RADIUS_KM) anyClose = true;
+            if (emergencyOn && isEmergencySquawk(table[i].squawk)) anyEmergency = true;
+        }
+        AircraftTable::unlock();
+    }
+
+    LedAlert::Mode mode = anyEmergency ? LedAlert::Mode::EmergencyRed
+                         : anyClose    ? LedAlert::Mode::ProximityGreen
+                                       : LedAlert::Mode::Off;
+
+    ledBlinkOn = LedAlert::update(mode, nowMs);
+}
+
+EmergencyInfo checkEmergency() {
+    EmergencyInfo info;
+    if (!SettingsStore::emergencyAlertEnabled()) return info;
 
     AircraftTable::lock();
     Aircraft* table = AircraftTable::raw();
     for (uint8_t i = 0; i < AircraftTable::capacity(); i++) {
-        if (table[i].valid && table[i].distanceKm <= Config::LED_ALERT_RADIUS_KM) {
-            anyClose = true;
+        if (table[i].valid && isEmergencySquawk(table[i].squawk)) {
+            info.active = true;
+            strncpy(info.callsign, table[i].callsign[0] ? table[i].callsign : table[i].hex,
+                    sizeof(info.callsign) - 1);
+            strncpy(info.squawk, table[i].squawk, sizeof(info.squawk) - 1);
             break;
         }
     }
     AircraftTable::unlock();
 
-    ledBlinkOn = LedAlert::update(anyClose, nowMs);
+    return info;
 }
 
 }
