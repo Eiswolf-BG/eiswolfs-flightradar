@@ -84,19 +84,30 @@ namespace {
         return TFT_RED;
     }
 
-    // Gedaempfte Version der Hoehenfarbe fuer die Flugbahn-Linie (Trail) -
-    // deutlich dunkler als der Punkt selbst, damit der Trail nicht mit dem
-    // aktuellen Punkt/Label verwechselt wird.
+    // Zeichnet ein kleines Dreieck, das in Flugrichtung (headingDeg) zeigt -
+    // wie das klassische "Ziel"-Symbol auf echten ATC-Radarschirmen. Ersetzt
+    // den vorherigen Kreis + separaten Kursstrich in einem Symbol.
+    void drawAircraftMarker(TFT_eSPI& gfx, int16_t x, int16_t y, float headingDeg, uint16_t color) {
+        double rad     = headingDeg * PI / 180.0;
+        double backRad1 = (headingDeg + 150.0) * PI / 180.0;
+        double backRad2 = (headingDeg - 150.0) * PI / 180.0;
+
+        int16_t tipX   = x + (int16_t)(7 * sin(rad));
+        int16_t tipY   = y - (int16_t)(7 * cos(rad));
+        int16_t backLX = x + (int16_t)(5 * sin(backRad1));
+        int16_t backLY = y - (int16_t)(5 * cos(backRad1));
+        int16_t backRX = x + (int16_t)(5 * sin(backRad2));
+        int16_t backRY = y - (int16_t)(5 * cos(backRad2));
+
+        gfx.fillTriangle(tipX, tipY, backLX, backLY, backRX, backRY, color);
+    }
+
     uint16_t dimColorForAltitude(int32_t altFt) {
         if (altFt < Config::COLOR_LOW_ALT_THRESHOLD_FT) return TFT_DARKGREEN;
         if (altFt < Config::COLOR_MID_ALT_THRESHOLD_FT) return TFT_OLIVE;
         return TFT_MAROON;
     }
 
-    // --- Flugbahn-Trail: merkt sich die letzten paar Bildschirm-Positionen
-    // pro Flugzeug (per Hex-Code), damit man die grobe Flugrichtung ueber die
-    // letzten Datenupdates hinweg sieht. Wird nur bei render() (Vollbild-
-    // Redraw) aktualisiert/gezeichnet, nicht bei jedem Sweep-Tick.
     constexpr uint8_t TRAIL_LEN = 4;
     constexpr uint32_t TRAIL_STALE_MS = Config::FETCH_INTERVAL_MS * 3;
 
@@ -398,8 +409,6 @@ void render(TFT_eSPI& tft, int16_t top) {
         bool isSelected = selectedHex[0] && strcmp(a.hex, selectedHex) == 0;
         bool isEmergency = SettingsStore::emergencyAlertEnabled() && isEmergencySquawk(a.squawk);
 
-        // Flugbahn-Trail: erst die bisherige Spur zeichnen, DANN den neuen
-        // Punkt anhaengen und den Punkt/Ring/Label darueber legen.
         TrailEntry* trail = findOrCreateTrail(a.hex);
         drawTrail(tft, trail, dimColorForAltitude(a.altBaroFt));
         pushTrailPoint(trail, pt.x, pt.y);
@@ -409,16 +418,11 @@ void render(TFT_eSPI& tft, int16_t top) {
             selectionStillPresent = true;
             selected = a;
         }
-        tft.fillCircle(pt.x, pt.y, 5, color);
+        drawAircraftMarker(tft, pt.x, pt.y, a.headingDeg, color);
 
         if (isEmergency) {
             tft.drawCircle(pt.x, pt.y, 12, TFT_RED);
         }
-
-        double rad = a.headingDeg * PI / 180.0;
-        int16_t dx = (int16_t)(sin(rad) * 10);
-        int16_t dy = (int16_t)(-cos(rad) * 10);
-        tft.drawLine(pt.x, pt.y, pt.x + dx, pt.y + dy, color);
 
         tft.setTextColor(color, TFT_BLACK);
         tft.setTextDatum(BC_DATUM);
@@ -491,16 +495,11 @@ void tick(TFT_eSPI& tft, int16_t top, uint32_t deltaMs) {
             continue;
         }
 
-        tft.fillCircle(hp.x, hp.y, 5, hp.color);
+        drawAircraftMarker(tft, hp.x, hp.y, hp.headingDeg, hp.color);
 
         if (hp.isEmergency) {
             tft.drawCircle(hp.x, hp.y, 12, TFT_RED);
         }
-
-        double rad = hp.headingDeg * PI / 180.0;
-        int16_t dx = (int16_t)(sin(rad) * 10);
-        int16_t dy = (int16_t)(-cos(rad) * 10);
-        tft.drawLine(hp.x, hp.y, hp.x + dx, hp.y + dy, hp.color);
 
         tft.setTextColor(hp.color, TFT_BLACK);
         tft.setTextDatum(BC_DATUM);
