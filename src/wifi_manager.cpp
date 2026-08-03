@@ -25,6 +25,14 @@ namespace {
     uint32_t lastReconnectAttemptMs = 0;
     constexpr uint32_t RECONNECT_RETRY_MS = 10000;
 
+    // Der Reconnect-Scan MUSS asynchron laufen: update() wird dauerhaft in
+    // der NetTask-Schleife (Core 0) aufgerufen, und ein blockierender Scan
+    // (WiFi.scanNetworks(false)) haelt dort mehrere Sekunden am Stueck fest -
+    // das hat frueher den Watchdog ausgeloest (Bootloop). Stattdessen wird
+    // der Scan hier gestartet und ueber mehrere update()-Aufrufe hinweg
+    // nicht-blockierend abgefragt.
+    bool reconnectScanPending = false;
+
     SemaphoreHandle_t mutex = nullptr;
 
     void setState(State s) {
@@ -65,6 +73,44 @@ namespace {
             f.println(networks[i].pass);
         }
         f.close();
+    }
+
+    // Nicht-blockierender Ersatz fuer beginConnect() zur Verwendung INNERHALB
+    // von update() (NetTask). Startet beim ersten Aufruf einen asynchronen
+    // Scan; bei weiteren Aufrufen wird nur kurz nachgeschaut, ob er fertig
+    // ist (WiFi.scanComplete() ist eine billige, sofort zurueckkehrende
+    // Abfrage) - blockiert also nie.
+    void tryReconnectAsync() {
+        if (!reconnectScanPending) {
+            WiFi.scanNetworks(/*async=*/true);
+            reconnectScanPending = true;
+            return;
+        }
+
+        int n = WiFi.scanComplete();
+        if (n == WIFI_SCAN_RUNNING) return;
+
+        reconnectScanPending = false;
+
+        if (n <= 0) {
+            WiFi.scanDelete();
+            return;
+        }
+
+        int8_t chosen = -1;
+        for (uint8_t i = 0; i < networkCountVal && chosen < 0; i++) {
+            for (int j = 0; j < n; j++) {
+                if (WiFi.SSID(j) == networks[i].ssid) {
+                    chosen = (int8_t)i;
+                    break;
+                }
+            }
+        }
+        WiFi.scanDelete();
+
+        if (chosen < 0) return;
+
+        connectTo(networks[chosen].ssid, networks[chosen].pass);
     }
 }
 
@@ -114,6 +160,12 @@ void beginConnect() {
         return;
     }
 
+    // Blockierender Scan (ca. 2-3s) - passiert nur einmal beim Booten, VOR
+    // dem Start von NetTask, daher unkritisch (kein Watchdog-Risiko). Wir
+    // verbinden uns mit dem ERSTEN gespeicherten Netzwerk, das gerade
+    // sichtbar ist (Prioritaet = Speicherreihenfolge), statt blind das erste
+    // gespeicherte zu versuchen - so klappt es automatisch mit Zuhause-WLAN
+    // ODER dem Auto-Hotspot, je nachdem was gerade in Reichweite ist.
     int visibleCount = WiFi.scanNetworks(/*async=*/false);
 
     int8_t chosen = -1;
@@ -157,10 +209,16 @@ void update() {
         return;
     }
 
+    // In Idle/Failed (auch nach einem fehlgeschlagenen Erstverbindungsversuch
+    // beim Booten) in regelmaessigen Abstaenden automatisch erneut versuchen,
+    // alle gespeicherten Netzwerke durchzuscannen - NICHT-blockierend (siehe
+    // tryReconnectAsync()), damit NetTask den Watchdog nicht verpasst.
     if ((s == State::Idle || s == State::Failed) && networkCountVal > 0) {
-        if (millis() - lastReconnectAttemptMs >= RECONNECT_RETRY_MS) {
+        if (reconnectScanPending) {
+            tryReconnectAsync();
+        } else if (millis() - lastReconnectAttemptMs >= RECONNECT_RETRY_MS) {
             lastReconnectAttemptMs = millis();
-            beginConnect();
+            tryReconnectAsync();
         }
     }
 }

@@ -1,8 +1,10 @@
+#include <WiFi.h>
 #include "adsb_client.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
+
 
 namespace AdsbClient {
 

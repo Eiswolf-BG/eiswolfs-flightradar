@@ -9,22 +9,21 @@
 // beim Start aus der heutigen CSV-Datei).
 namespace FlightLogbook {
 
-    // Einmalig beim Boot aufrufen, NACHDEM die lokale Uhrzeit (UTC-Offset)
-    // bekannt ist - liest die heutige CSV-Datei (falls vorhanden), um bereits
-    // geloggte Flugzeuge nicht doppelt einzutragen.
     void init();
-
-    // Periodisch aufrufen (z.B. nach jeder erfolgreichen ADS-B-Abfrage):
-    // prueft auf neue, bisher ungesehene Flugzeuge und schreibt sie ins
-    // heutige Logbuch. Kuemmert sich auch um den Tageswechsel (neue Datei,
-    // neue "gesehen"-Liste).
     void update();
 
-    // Anzahl der HEUTE bereits geloggten (unterschiedlichen) Flugzeuge.
     uint16_t todayCount();
 
-    // Summiert alle taeglichen Logbuch-Dateien auf der SD-Karte:
-    // 'totalAircraft' = Summe aller Eintraege ueber alle Tage,
-    // 'totalDays' = Anzahl der Tage, an denen ueberhaupt geloggt wurde.
     void computeAllTimeStats(uint32_t& totalAircraft, uint16_t& totalDays);
+
+    struct DayEntry {
+        char date[11] = {0}; // "YYYY-MM-DD"
+        uint32_t count = 0;
+    };
+
+    // Fuellt 'out' mit bis zu 'maxEntries' Tagen (Dateiname + Anzahl
+    // Eintraege), sortiert wie sie auf der SD-Karte liegen (i.d.R.
+    // chronologisch). Gibt die tatsaechliche Anzahl gefuellter Eintraege
+    // zurueck.
+    uint8_t listDays(DayEntry* out, uint8_t maxEntries);
 }

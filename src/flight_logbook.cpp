@@ -65,6 +65,7 @@ namespace {
                                             : line.substring(firstComma + 1, secondComma);
             hex.trim();
             if (hex.length() > 0) markSeen(hex.c_str());
+            yield();
         }
         f.close();
     }
@@ -79,19 +80,7 @@ namespace {
         }
     }
 
-    void writeLogLine(const Aircraft& a) {
-        char filename[64];
-        logFilename(filename, sizeof(filename));
-
-        bool needsHeader = !SD.exists(filename);
-
-        File f = SD.open(filename, FILE_APPEND);
-        if (!f) return;
-
-        if (needsHeader) {
-            f.println("timestamp,hex,callsign,reg,type,distance_km,altitude_ft");
-        }
-
+    void writeLogLine(File& f, const Aircraft& a) {
         time_t now = time(nullptr);
         struct tm tmNow;
         localtime_r(&now, &tmNow);
@@ -108,7 +97,6 @@ namespace {
                  a.typeCode[0] ? a.typeCode : "",
                  a.distanceKm,
                  (int)a.altBaroFt);
-        f.close();
     }
 }
 
@@ -132,12 +120,32 @@ void update() {
     }
     AircraftTable::unlock();
 
+    bool anyNew = false;
+    for (uint8_t i = 0; i < count; i++) {
+        if (snapshot[i].hex[0] && !alreadySeen(snapshot[i].hex)) { anyNew = true; break; }
+    }
+    if (!anyNew) return;
+
+    char filename[64];
+    logFilename(filename, sizeof(filename));
+    bool needsHeader = !SD.exists(filename);
+    yield();
+
+    File f = SD.open(filename, FILE_APPEND);
+    if (!f) return;
+    if (needsHeader) {
+        f.println("timestamp,hex,callsign,reg,type,distance_km,altitude_ft");
+    }
+
     for (uint8_t i = 0; i < count; i++) {
         if (!snapshot[i].hex[0]) continue;
         if (alreadySeen(snapshot[i].hex)) continue;
         markSeen(snapshot[i].hex);
-        writeLogLine(snapshot[i]);
+        writeLogLine(f, snapshot[i]);
+        yield();
     }
+
+    f.close();
 }
 
 uint16_t todayCount() { return seenCount; }
@@ -159,6 +167,7 @@ void computeAllTimeStats(uint32_t& totalAircraft, uint16_t& totalDays) {
                 while (entry.available()) {
                     entry.readStringUntil('\n');
                     lines++;
+                    if (lines % 50 == 0) yield();
                 }
                 if (lines > 0) totalAircraft += (lines - 1);
             }
@@ -167,6 +176,41 @@ void computeAllTimeStats(uint32_t& totalAircraft, uint16_t& totalDays) {
         entry = dir.openNextFile();
     }
     dir.close();
+}
+
+uint8_t listDays(DayEntry* out, uint8_t maxEntries) {
+    uint8_t filled = 0;
+
+    File dir = SD.open(Config::SD_LOG_DIR);
+    if (!dir || !dir.isDirectory()) return 0;
+
+    File entry = dir.openNextFile();
+    while (entry && filled < maxEntries) {
+        if (!entry.isDirectory()) {
+            String name = String(entry.name());
+            if (name.endsWith(".csv")) {
+                String dateOnly = name.substring(0, name.length() - 4);
+                int slashIdx = dateOnly.lastIndexOf('/');
+                if (slashIdx >= 0) dateOnly = dateOnly.substring(slashIdx + 1);
+
+                uint32_t lines = 0;
+                while (entry.available()) {
+                    entry.readStringUntil('\n');
+                    lines++;
+                    if (lines % 50 == 0) yield();
+                }
+
+                strncpy(out[filled].date, dateOnly.c_str(), sizeof(out[filled].date) - 1);
+                out[filled].count = (lines > 0) ? (lines - 1) : 0;
+                filled++;
+            }
+        }
+        entry.close();
+        entry = dir.openNextFile();
+    }
+    dir.close();
+
+    return filled;
 }
 
 }

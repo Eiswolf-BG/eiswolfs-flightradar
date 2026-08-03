@@ -2,6 +2,8 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #include <SD.h>
+#include <WiFi.h>
+#include <time.h>
 
 #include "config.h"
 #include "aircraft.h"
@@ -22,15 +24,23 @@
 #include "splash_screen.h"
 #include "led_alert.h"
 #include "flight_logbook.h"
+#include "screenshot.h"
 
 TFT_eSPI tft = TFT_eSPI();
 
-constexpr int16_t CONTENT_TOP = 30; // schlanker Header, Radar bekommt den Rest des Screens
-constexpr uint32_t POLL_INTERVAL_MS = 300; // wie oft wir NACHSCHAUEN, ob sich Daten geaendert haben
-constexpr uint32_t SWEEP_TICK_MS = 80; // wie oft der Sweep-Strahl ein Stueck weiterdreht
+// Schlanker Header (Titel + Buttons) PLUS eine zweite, duenne Statuszeile
+// (Uhrzeit + WLAN-Signalstaerke) darunter - der Radar-Kreis bekommt den Rest
+// des Screens.
+constexpr int16_t HEADER_TITLE_H = 30;
+constexpr int16_t STATUS_LINE_H = 12;
+constexpr int16_t CONTENT_TOP = HEADER_TITLE_H + STATUS_LINE_H;
+constexpr uint32_t POLL_INTERVAL_MS = 300;
+constexpr uint32_t SWEEP_TICK_MS = 80;
+constexpr uint32_t STATUS_LINE_UPDATE_MS = 1000;
 uint32_t lastPollMs = 0;
 uint32_t lastSweepMs = 0;
-uint32_t lastRenderedVersion = 0xFFFFFFFF; // erzwingt einen ersten Render-Aufruf
+uint32_t lastStatusLineMs = 0;
+uint32_t lastRenderedVersion = 0xFFFFFFFF;
 bool forceRedraw = false;
 bool wasEmergency = false;
 bool bannerBlinkOn = false;
@@ -43,6 +53,7 @@ struct Rect {
 };
 
 Rect menuBtn = {Config::SCREEN_WIDTH - 60, 3, 54, 22};
+Rect camBtn = {(int16_t)(menuBtn.x - 46), 3, 42, 22};
 
 void drawMenuButton() {
     tft.fillRoundRect(menuBtn.x, menuBtn.y, menuBtn.w, menuBtn.h, 4, TFT_NAVY);
@@ -53,48 +64,96 @@ void drawMenuButton() {
     tft.setTextDatum(TL_DATUM);
 }
 
+void drawCamButton() {
+    tft.fillRoundRect(camBtn.x, camBtn.y, camBtn.w, camBtn.h, 4, TFT_NAVY);
+    tft.drawRoundRect(camBtn.x, camBtn.y, camBtn.w, camBtn.h, 4, TFT_DARKGREY);
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextColor(TFT_WHITE, TFT_NAVY);
+    tft.drawString("Cam", camBtn.x + camBtn.w / 2, camBtn.y + camBtn.h / 2);
+    tft.setTextDatum(TL_DATUM);
+}
+
 void drawHeader() {
-    // Bis CONTENT_TOP loeschen, damit kein Bildrest vom Menue zwischen Header
-    // und Radar-Bildschirm haengen bleibt. Schlanker Header, damit der Radar-
-    // Kreis darunter maximal viel Platz bekommt.
     tft.fillRect(0, 0, Config::SCREEN_WIDTH, CONTENT_TOP, TFT_BLACK);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setTextSize(1);
     tft.setCursor(6, 10);
     tft.println("Eiswolfs Flightradar");
+    drawCamButton();
     drawMenuButton();
 }
 
-// Zeigt eine grosse, unmissverstaendliche Meldung und haelt das Geraet an -
-// KEIN weiterer Bildschirm erscheint, solange keine SD-Karte steckt. Die App
-// braucht die Karte fuer Einstellungen, WLAN-Zugangsdaten und Nachschlage-
-// tabellen, daher macht ein Weiterlaufen ohne sie keinen Sinn.
+void updateStatusLine() {
+    if (wasEmergency) return;
+
+    tft.fillRect(0, HEADER_TITLE_H, Config::SCREEN_WIDTH, STATUS_LINE_H, TFT_BLACK);
+    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+
+    time_t now = time(nullptr);
+    if (now > 8 * 3600 * 2) {
+        struct tm tmNow;
+        localtime_r(&now, &tmNow);
+        char timeBuf[6];
+        snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", tmNow.tm_hour, tmNow.tm_min);
+        tft.setCursor(6, HEADER_TITLE_H + 2);
+        tft.print(timeBuf);
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        char rssiBuf[14];
+        snprintf(rssiBuf, sizeof(rssiBuf), "WiFi %ddBm", WiFi.RSSI());
+        tft.setTextDatum(TR_DATUM);
+        tft.drawString(rssiBuf, Config::SCREEN_WIDTH - 4, HEADER_TITLE_H + 2);
+        tft.setTextDatum(TL_DATUM);
+    }
+}
+
+void takeScreenshotWithFeedback() {
+    String filename = Screenshot::save(tft);
+
+    tft.fillRect(0, 0, Config::SCREEN_WIDTH, CONTENT_TOP, TFT_NAVY);
+    tft.setTextColor(TFT_WHITE, TFT_NAVY);
+    tft.setCursor(6, 10);
+    if (filename.length() > 0) {
+        tft.print("Saved: " + filename);
+    } else {
+        tft.setTextColor(TFT_RED, TFT_NAVY);
+        tft.print("Screenshot failed");
+    }
+    delay(1200);
+    drawHeader();
+    updateStatusLine();
+}
+
 void haltWithSdRequiredScreen() {
+    // Ohne SD-Karte kann SettingsStore::load() nie laufen, also ist auch die
+    // Invertierungs-Einstellung dieses Geraets unbekannt. Dieses konkrete
+    // CYD-Board braucht invertDisplay(true), um Farben korrekt darzustellen
+    // (ohne das erscheint Schwarz als Weiss und Gruen als Rosa/Magenta) -
+    // hier fest setzen, damit Schwarz/Gruen GARANTIERT korrekt aussieht.
+    tft.invertDisplay(true);
+
     tft.fillScreen(TFT_BLACK);
     tft.setTextDatum(MC_DATUM);
     int16_t cx = Config::SCREEN_WIDTH / 2;
     int16_t cy = Config::SCREEN_HEIGHT / 2;
 
-    tft.setTextColor(TFT_RED, TFT_BLACK);
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
     tft.setTextSize(2);
     tft.drawString("For this app a", cx, cy - 40);
     tft.drawString("SD card is", cx, cy - 10);
     tft.drawString("required", cx, cy + 20);
 
     tft.setTextSize(1);
-    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
     tft.drawString("Insert a card and restart the device", cx, cy + 60);
     tft.setTextDatum(TL_DATUM);
 
     while (true) {
-        delay(1000); // haengen bleiben - absichtlich kein weiterer Screen
+        delay(1000);
     }
 }
 
-// Zeigt/versteckt ein blinkendes Notfall-Banner im Header-Bereich, wenn ein
-// Flugzeug einen Notfall-Squawk (7500/7600/7700) sendet. Ersetzt kurzzeitig
-// den normalen Titel; sobald der Notfall vorbei ist, wird drawHeader() genau
-// einmal wieder aufgerufen, um den Titel sauber wiederherzustellen.
 void updateEmergencyBanner(uint32_t nowMs) {
     RadarScreen::EmergencyInfo emergency = RadarScreen::checkEmergency();
 
@@ -110,6 +169,7 @@ void updateEmergencyBanner(uint32_t nowMs) {
     } else if (wasEmergency) {
         wasEmergency = false;
         drawHeader();
+        updateStatusLine();
     }
 }
 
@@ -119,42 +179,30 @@ void setup() {
 
     tft.init();
     tft.setRotation(0);
-    // Sofort loeschen, bevor irgendetwas anderes passiert (SD-Init etc.
-    // braucht einen Moment) - sonst zeigt das Display kurz zufaelligen
-    // Bildspeicher-Muell an, bevor der erste echte Screen gezeichnet wird.
     tft.fillScreen(TFT_BLACK);
 
     TouchInput::begin();
     LedAlert::begin();
 
-    // --- SD-Karte: PFLICHT. Ohne Karte kein weiterer Screen. ---
     bool sdOk = SdStorage::init();
     if (!sdOk) {
         haltWithSdRequiredScreen();
-        return; // unerreichbar (haltWithSdRequiredScreen() haengt fuer immer), nur zur Klarheit
+        return;
     }
     SdStorage::seedDefaultDataFiles();
 
-    // Einstellungen (u.a. Display-Invertierung) VOR dem Splash laden und
-    // anwenden, damit der Splash selbst schon in der richtigen Ausrichtung
-    // gezeichnet wird (kein Farbwechsel mitten in der Anzeige).
     SettingsStore::load();
     tft.invertDisplay(SettingsStore::displayInverted());
 
-    WifiMgr::init(); // laedt die gespeicherten Netzwerke (bis zu 3) von der SD-Karte
+    WifiMgr::init();
 
-    // --- Splash-Screen: schwarzer Hintergrund, gruenes Flugzeug, mind. 5s ---
     SplashScreen::begin(tft);
     SplashScreen::setStatusLine(tft, 0, "SD Card: OK", TFT_WHITE);
 
-    // --- Touch-Kalibrierung (nur beim allerersten Start, oder wenn Datei fehlt) ---
     if (!TouchInput::loadCalibration()) {
         CalibrationScreen::run(tft);
     }
 
-    // --- WLAN: Ersteinrichtung (falls noch kein Netzwerk gespeichert ist)
-    //     oder automatisches Verbinden mit dem ersten gerade sichtbaren
-    //     gespeicherten Netzwerk (z.B. Zuhause ODER Auto-Hotspot). ---
     if (WifiMgr::networkCount() == 0) {
         WifiSetupScreen::run(tft);
     } else {
@@ -176,7 +224,6 @@ void setup() {
 
     AdsbClient::primeTime();
 
-    // --- Standort per IP-Geolocation (einmalig blockierend beim Start) ---
     SplashScreen::setStatusLine(tft, 2, "Getting location...");
     LocationManager::init();
     uint32_t locStart = millis();
@@ -187,25 +234,20 @@ void setup() {
     }
     SplashScreen::setStatusLine(tft, 2, "Ready!");
 
-    // Sobald die IP-Geolocation einen UTC-Offset geliefert hat, die
-    // Zeitzone entsprechend setzen - Zeitstempel (Flugbuch, Log-Dateinamen)
-    // zeigen dann die ECHTE Ortszeit statt UTC, automatisch weltweit richtig.
     if (LocationManager::hasUtcOffset()) {
         configTime(LocationManager::utcOffsetSeconds(), 0, "pool.ntp.org", "time.nist.gov");
     }
 
     AircraftTable::init();
     AirlineLookup::init();
-    FlightLogbook::init(); // rekonstruiert die "heute schon geloggt"-Liste aus der SD-Karte
+    FlightLogbook::init();
 
-    // --- Ab hier uebernimmt der Netzwerk-Task (Core 0) laufend WLAN-Status,
-    //     Standort-Updates und ADS-B-Abfragen im Hintergrund. ---
     NetTask::begin();
 
-    // Splash bleibt mindestens 5 Sekunden sichtbar, egal wie schnell der Rest war.
     SplashScreen::waitRemaining();
 
     drawHeader();
+    updateStatusLine();
     RadarScreen::render(tft, CONTENT_TOP);
 }
 
@@ -215,19 +257,17 @@ void loop() {
         if (menuBtn.contains(tap.x, tap.y)) {
             MenuScreen::run(tft);
             drawHeader();
-            forceRedraw = true; // sofort neu zeichnen
+            updateStatusLine();
+            forceRedraw = true;
+        } else if (camBtn.contains(tap.x, tap.y)) {
+            takeScreenshotWithFeedback();
         } else if (tap.y >= CONTENT_TOP) {
             if (RadarScreen::handleTap(tap.x, tap.y, CONTENT_TOP)) {
-                forceRedraw = true; // sofort neu zeichnen nach Interaktion
+                forceRedraw = true;
             }
         }
     }
 
-    // Nur alle POLL_INTERVAL_MS kurz nachschauen (billige Abfrage eines
-    // Zaehlers), statt staendig teuer neu zu zeichnen. Ein echtes Neuzeichnen
-    // (render()) passiert nur, wenn sich die Flugzeugdaten TATSAECHLICH
-    // geaendert haben (neue Abfrage im Hintergrund fertig) oder der Nutzer
-    // etwas angetippt hat - das vermeidet unnoetiges Flackern.
     if (forceRedraw || millis() - lastPollMs >= POLL_INTERVAL_MS) {
         lastPollMs = millis();
         uint32_t currentVersion = AircraftTable::version();
@@ -235,22 +275,23 @@ void loop() {
             lastRenderedVersion = currentVersion;
             forceRedraw = false;
             RadarScreen::render(tft, CONTENT_TOP);
-            lastSweepMs = millis(); // Sweep-Delta nicht ueber den Vollbild-Redraw hinweg aufaddieren
+            lastSweepMs = millis();
         }
     }
 
-    // Sweep-Strahl dreht sich unabhaengig von den Flugzeugdaten weiter -
-    // billige Linien-Zeichnung ohne Vollbild-Clear, daher kein Flackern.
     uint32_t nowMs = millis();
 
-    // Naeherungs-/Notfall-Alarm (LED) laeuft IMMER, auch wenn gerade das
-    // Detail-Fenster offen ist - unabhaengig vom Sweep/Radar-Redraw.
     RadarScreen::updateProximityAlert(nowMs);
 
     if (nowMs - lastSweepMs >= SWEEP_TICK_MS) {
         uint32_t deltaMs = nowMs - lastSweepMs;
         lastSweepMs = nowMs;
         RadarScreen::tick(tft, CONTENT_TOP, deltaMs);
-        updateEmergencyBanner(nowMs); // gleiche Taktung wie der Sweep-Tick
+        updateEmergencyBanner(nowMs);
+    }
+
+    if (nowMs - lastStatusLineMs >= STATUS_LINE_UPDATE_MS) {
+        lastStatusLineMs = nowMs;
+        updateStatusLine();
     }
 }

@@ -3,6 +3,7 @@
 #include "calibration_screen.h"
 #include "wifi_manage_screen.h"
 #include "stats_screen.h"
+#include "logbook_files_screen.h"
 #include "settings_store.h"
 #include "config.h"
 
@@ -16,9 +17,9 @@ namespace {
         }
     };
 
-    constexpr int16_t ROW_H = 30;
-    constexpr int16_t ROW_GAP = 4;
-    constexpr int16_t ROW_START_Y = 26;
+    constexpr int16_t ROW_H = 26;
+    constexpr int16_t ROW_GAP = 3;
+    constexpr int16_t ROW_START_Y = 24;
 
     Rect rowRect(uint8_t index) {
         return {10, (int16_t)(ROW_START_Y + index * (ROW_H + ROW_GAP)),
@@ -45,13 +46,14 @@ void run(TFT_eSPI& tft) {
     Rect proximityBtn  = rowRect(4);
     Rect logbookBtn    = rowRect(5);
     Rect statsBtn      = rowRect(6);
-    Rect backBtn       = rowRect(7);
+    Rect logFilesBtn   = rowRect(7);
+    Rect backBtn       = rowRect(8);
 
     bool done = false;
     while (!done) {
         tft.fillScreen(TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.setCursor(10, 8);
+        tft.setCursor(10, 6);
         tft.println("Settings");
 
         drawButton(tft, calibBtn, "Calibrate touch");
@@ -67,6 +69,7 @@ void run(TFT_eSPI& tft) {
         drawButton(tft, proximityBtn, "Proximity LED: " + onOff(SettingsStore::proximityAlertEnabled()));
         drawButton(tft, logbookBtn, "Flight logbook: " + onOff(SettingsStore::flightLogbookEnabled()));
         drawButton(tft, statsBtn, "Statistics");
+        drawButton(tft, logFilesBtn, "Logbook files");
 
         drawButton(tft, backBtn, "Back");
 
@@ -92,6 +95,8 @@ void run(TFT_eSPI& tft) {
             SettingsStore::setFlightLogbookEnabled(!SettingsStore::flightLogbookEnabled());
         } else if (statsBtn.contains(tap.x, tap.y)) {
             StatsScreen::run(tft);
+        } else if (logFilesBtn.contains(tap.x, tap.y)) {
+            LogbookFilesScreen::run(tft);
         } else if (backBtn.contains(tap.x, tap.y)) {
             done = true;
         }

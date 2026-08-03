@@ -84,22 +84,13 @@ namespace {
         return TFT_RED;
     }
 
-    // Zeichnet ein kleines Dreieck, das in Flugrichtung (headingDeg) zeigt -
-    // wie das klassische "Ziel"-Symbol auf echten ATC-Radarschirmen. Ersetzt
-    // den vorherigen Kreis + separaten Kursstrich in einem Symbol.
     void drawAircraftMarker(TFT_eSPI& gfx, int16_t x, int16_t y, float headingDeg, uint16_t color) {
-        double rad     = headingDeg * PI / 180.0;
-        double backRad1 = (headingDeg + 150.0) * PI / 180.0;
-        double backRad2 = (headingDeg - 150.0) * PI / 180.0;
+        gfx.fillCircle(x, y, 5, color);
 
-        int16_t tipX   = x + (int16_t)(7 * sin(rad));
-        int16_t tipY   = y - (int16_t)(7 * cos(rad));
-        int16_t backLX = x + (int16_t)(5 * sin(backRad1));
-        int16_t backLY = y - (int16_t)(5 * cos(backRad1));
-        int16_t backRX = x + (int16_t)(5 * sin(backRad2));
-        int16_t backRY = y - (int16_t)(5 * cos(backRad2));
-
-        gfx.fillTriangle(tipX, tipY, backLX, backLY, backRX, backRY, color);
+        double rad = headingDeg * PI / 180.0;
+        int16_t dx = (int16_t)(sin(rad) * 10);
+        int16_t dy = (int16_t)(-cos(rad) * 10);
+        gfx.drawLine(x, y, x + dx, y + dy, color);
     }
 
     uint16_t dimColorForAltitude(int32_t altFt) {
@@ -237,6 +228,9 @@ namespace {
         gfx.setTextColor(TFT_DARKGREY, TFT_BLACK);
         gfx.setTextDatum(MC_DATUM);
         gfx.drawString("N", L.cx, L.cy - L.radius - 8);
+        gfx.drawString("S", L.cx, L.cy + L.radius - 10);
+        gfx.drawString("E", L.cx + L.radius - 10, L.cy);
+        gfx.drawString("W", L.cx - L.radius + 10, L.cy);
         char ringLabel[8];
         snprintf(ringLabel, sizeof(ringLabel), "%.0f", rangeKm / 3);
         gfx.drawString(ringLabel, L.cx, L.cy - L.radius / 3);
