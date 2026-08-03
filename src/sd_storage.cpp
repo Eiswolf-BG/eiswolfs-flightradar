@@ -8,7 +8,7 @@ namespace SdStorage {
 
 namespace {
     bool mounted = false;
-    SPIClass sdSpi(HSPI); 
+    SPIClass sdSpi(HSPI);
     const char* kDefaultAirlinesCsv =
         "icao,name\n"
         "BAW,British Airways\n"
@@ -64,26 +64,14 @@ namespace {
 }
 
 bool init() {
-    Serial.printf("[SD] Pins: CLK=%d MISO=%d MOSI=%d CS=%d\n",
-                   Config::SD_SPI_CLK_PIN, Config::SD_SPI_MISO_PIN,
-                   Config::SD_SPI_MOSI_PIN, Config::SD_SPI_CS_PIN);
-
-    Serial.println("[SD] vor sdSpi.begin()");
     sdSpi.begin(Config::SD_SPI_CLK_PIN, Config::SD_SPI_MISO_PIN,
                 Config::SD_SPI_MOSI_PIN, Config::SD_SPI_CS_PIN);
-    Serial.println("[SD] sdSpi.begin() fertig");
-
-    Serial.println("[SD] vor SD.begin()");
     mounted = SD.begin(Config::SD_SPI_CS_PIN, sdSpi, 4000000);
-    Serial.printf("[SD] SD.begin() fertig, mounted=%d\n", mounted);
-
     if (!mounted) return false;
 
-    Serial.println("[SD] vor ensureDir(ROOT)");
     ensureDir(Config::SD_ROOT_DIR);
-    Serial.println("[SD] vor ensureDir(LOG)");
     ensureDir(Config::SD_LOG_DIR);
-    Serial.println("[SD] init() komplett fertig");
+    ensureDir(Config::SD_SCREENSHOT_DIR);
     return true;
 }
 

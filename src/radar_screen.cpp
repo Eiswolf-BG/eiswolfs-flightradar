@@ -58,6 +58,12 @@ namespace {
 
     char selectedHex[7] = {0};
 
+    uint32_t lastEmptyTapMs = 0;
+    int16_t lastEmptyTapX = -1000;
+    int16_t lastEmptyTapY = -1000;
+    constexpr uint32_t DOUBLE_TAP_MS = 400;
+    constexpr int16_t DOUBLE_TAP_RADIUS = 25;
+
     bool ledBlinkOn = true;
 
     bool isEmergencySquawk(const char* squawk) {
@@ -76,6 +82,79 @@ namespace {
         if (altFt < Config::COLOR_LOW_ALT_THRESHOLD_FT) return TFT_GREEN;
         if (altFt < Config::COLOR_MID_ALT_THRESHOLD_FT) return TFT_YELLOW;
         return TFT_RED;
+    }
+
+    // Gedaempfte Version der Hoehenfarbe fuer die Flugbahn-Linie (Trail) -
+    // deutlich dunkler als der Punkt selbst, damit der Trail nicht mit dem
+    // aktuellen Punkt/Label verwechselt wird.
+    uint16_t dimColorForAltitude(int32_t altFt) {
+        if (altFt < Config::COLOR_LOW_ALT_THRESHOLD_FT) return TFT_DARKGREEN;
+        if (altFt < Config::COLOR_MID_ALT_THRESHOLD_FT) return TFT_OLIVE;
+        return TFT_MAROON;
+    }
+
+    // --- Flugbahn-Trail: merkt sich die letzten paar Bildschirm-Positionen
+    // pro Flugzeug (per Hex-Code), damit man die grobe Flugrichtung ueber die
+    // letzten Datenupdates hinweg sieht. Wird nur bei render() (Vollbild-
+    // Redraw) aktualisiert/gezeichnet, nicht bei jedem Sweep-Tick.
+    constexpr uint8_t TRAIL_LEN = 4;
+    constexpr uint32_t TRAIL_STALE_MS = Config::FETCH_INTERVAL_MS * 3;
+
+    struct TrailEntry {
+        char hex[7] = {0};
+        bool active = false;
+        int16_t xs[TRAIL_LEN] = {0};
+        int16_t ys[TRAIL_LEN] = {0};
+        uint8_t count = 0;
+        uint32_t lastUpdateMs = 0;
+    };
+    constexpr uint8_t MAX_TRAILS = Config::MAX_TRACKED_AIRCRAFT;
+    TrailEntry trails[MAX_TRAILS];
+
+    void pruneStaleTrails() {
+        uint32_t now = millis();
+        for (uint8_t i = 0; i < MAX_TRAILS; i++) {
+            if (trails[i].active && now - trails[i].lastUpdateMs > TRAIL_STALE_MS) {
+                trails[i] = TrailEntry{};
+            }
+        }
+    }
+
+    TrailEntry* findOrCreateTrail(const char* hex) {
+        int16_t freeIdx = -1;
+        for (uint8_t i = 0; i < MAX_TRAILS; i++) {
+            if (trails[i].active && strcmp(trails[i].hex, hex) == 0) return &trails[i];
+            if (!trails[i].active && freeIdx < 0) freeIdx = (int16_t)i;
+        }
+        if (freeIdx < 0) return nullptr;
+        trails[freeIdx] = TrailEntry{};
+        strncpy(trails[freeIdx].hex, hex, sizeof(trails[freeIdx].hex) - 1);
+        trails[freeIdx].active = true;
+        return &trails[freeIdx];
+    }
+
+    void pushTrailPoint(TrailEntry* t, int16_t x, int16_t y) {
+        if (!t) return;
+        if (t->count < TRAIL_LEN) {
+            t->xs[t->count] = x;
+            t->ys[t->count] = y;
+            t->count++;
+        } else {
+            for (uint8_t i = 1; i < TRAIL_LEN; i++) {
+                t->xs[i - 1] = t->xs[i];
+                t->ys[i - 1] = t->ys[i];
+            }
+            t->xs[TRAIL_LEN - 1] = x;
+            t->ys[TRAIL_LEN - 1] = y;
+        }
+        t->lastUpdateMs = millis();
+    }
+
+    void drawTrail(TFT_eSPI& gfx, const TrailEntry* t, uint16_t color) {
+        if (!t || t->count < 2) return;
+        for (uint8_t i = 1; i < t->count; i++) {
+            gfx.drawLine(t->xs[i - 1], t->ys[i - 1], t->xs[i], t->ys[i], color);
+        }
     }
 
     void printLineTruncated(TFT_eSPI& gfx, int16_t x, int16_t y, int16_t maxWidth, const String& text) {
@@ -99,9 +178,6 @@ namespace {
         gfx.setTextDatum(TL_DATUM);
     }
 
-    // Kleine Farb-Legende (Hoehenband -> Farbe), damit auf den ersten Blick
-    // klar ist, was Gruen/Gelb/Rot bei den Flugzeug-Punkten bedeuten. Zeigt
-    // Meter statt Fuss, wenn die Region (per Geolocation) metrisch ist.
     void drawLegend(TFT_eSPI& gfx, int16_t y) {
         bool metric = LocationManager::useMetricUnits();
 
@@ -309,6 +385,8 @@ void render(TFT_eSPI& tft, int16_t top) {
 
     for (uint8_t i = 0; i < MAX_HIT_POINTS; i++) hitPoints[i].valid = false;
 
+    pruneStaleTrails();
+
     for (uint8_t i = 0; i < count && i < MAX_HIT_POINTS; i++) {
         Aircraft& a = snapshot[i];
         if (a.distanceKm > rangeKm * 1.05f) continue;
@@ -319,6 +397,12 @@ void render(TFT_eSPI& tft, int16_t top) {
         uint16_t color = colorForAltitude(a.altBaroFt);
         bool isSelected = selectedHex[0] && strcmp(a.hex, selectedHex) == 0;
         bool isEmergency = SettingsStore::emergencyAlertEnabled() && isEmergencySquawk(a.squawk);
+
+        // Flugbahn-Trail: erst die bisherige Spur zeichnen, DANN den neuen
+        // Punkt anhaengen und den Punkt/Ring/Label darueber legen.
+        TrailEntry* trail = findOrCreateTrail(a.hex);
+        drawTrail(tft, trail, dimColorForAltitude(a.altBaroFt));
+        pushTrailPoint(trail, pt.x, pt.y);
 
         if (isSelected) {
             tft.drawCircle(pt.x, pt.y, 9, TFT_WHITE);
@@ -460,6 +544,21 @@ bool handleTap(int16_t x, int16_t y, int16_t top) {
             AircraftDetails::request(hitPoints[i].hex);
             return true;
         }
+    }
+
+    uint32_t nowMs = millis();
+    bool isDoubleTap = (nowMs - lastEmptyTapMs <= DOUBLE_TAP_MS) &&
+                       (abs((int)x - (int)lastEmptyTapX) <= DOUBLE_TAP_RADIUS) &&
+                       (abs((int)y - (int)lastEmptyTapY) <= DOUBLE_TAP_RADIUS);
+    lastEmptyTapMs = nowMs;
+    lastEmptyTapX = x;
+    lastEmptyTapY = y;
+
+    if (isDoubleTap) {
+        uint8_t idx = SettingsStore::rangeIndex();
+        idx = (idx == 0) ? (Config::RANGE_STEP_COUNT - 1) : (idx - 1);
+        SettingsStore::setRangeIndex(idx);
+        lastEmptyTapMs = 0;
     }
 
     return true;

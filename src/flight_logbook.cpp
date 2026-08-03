@@ -13,7 +13,7 @@ namespace {
     constexpr uint16_t MAX_SEEN = 400;
     char seenHex[MAX_SEEN][7];
     uint16_t seenCount = 0;
-    char currentDateStr[11] = {0}; // "YYYY-MM-DD"
+    char currentDateStr[11] = {0};
 
     bool computeDateStr(char* out, size_t outSize) {
         time_t now = time(nullptr);
@@ -138,6 +138,35 @@ void update() {
         markSeen(snapshot[i].hex);
         writeLogLine(snapshot[i]);
     }
+}
+
+uint16_t todayCount() { return seenCount; }
+
+void computeAllTimeStats(uint32_t& totalAircraft, uint16_t& totalDays) {
+    totalAircraft = 0;
+    totalDays = 0;
+
+    File dir = SD.open(Config::SD_LOG_DIR);
+    if (!dir || !dir.isDirectory()) return;
+
+    File entry = dir.openNextFile();
+    while (entry) {
+        if (!entry.isDirectory()) {
+            String name = String(entry.name());
+            if (name.endsWith(".csv")) {
+                totalDays++;
+                uint32_t lines = 0;
+                while (entry.available()) {
+                    entry.readStringUntil('\n');
+                    lines++;
+                }
+                if (lines > 0) totalAircraft += (lines - 1);
+            }
+        }
+        entry.close();
+        entry = dir.openNextFile();
+    }
+    dir.close();
 }
 
 }

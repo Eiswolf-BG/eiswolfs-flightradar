@@ -32,6 +32,7 @@ namespace Config {
     constexpr const char* SD_AIRLINES_CSV          = "/Flightradar_cyd/airlines.csv";
     constexpr const char* SD_AIRCRAFT_TYPES_CSV    = "/Flightradar_cyd/aircraft_types.csv";
     constexpr const char* SD_LOG_DIR               = "/Flightradar_cyd/logs";
+    constexpr const char* SD_SCREENSHOT_DIR         = "/Flightradar_cyd/screenshots";
     constexpr const char* SD_SETTINGS_FILE         = "/Flightradar_cyd/config.txt";
     constexpr const char* SD_WIFI_CREDENTIALS_FILE = "/Flightradar_cyd/wifi.txt";
     constexpr const char* SD_CALIBRATION_FILE      = "/Flightradar_cyd/calibration.txt";
@@ -58,10 +59,8 @@ namespace Config {
     constexpr uint16_t COLOR_LOW_ALT_THRESHOLD_FT  = 10000;
     constexpr uint16_t COLOR_MID_ALT_THRESHOLD_FT  = 30000;
 
-    // Notfall-Squawk-Codes: 7500 (Entfuehrung), 7600 (Funkausfall), 7700 (allg. Notfall)
     constexpr const char* EMERGENCY_SQUAWKS[] = {"7500", "7600", "7700"};
     constexpr uint8_t EMERGENCY_SQUAWK_COUNT = 3;
 
-    // Maximal gespeicherte WLAN-Netzwerke (z.B. Zuhause, Auto-Hotspot, Arbeit)
     constexpr uint8_t MAX_WIFI_NETWORKS = 3;
 }

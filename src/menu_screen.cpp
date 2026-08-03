@@ -2,6 +2,7 @@
 #include "touch_input.h"
 #include "calibration_screen.h"
 #include "wifi_manage_screen.h"
+#include "stats_screen.h"
 #include "settings_store.h"
 #include "config.h"
 
@@ -43,7 +44,8 @@ void run(TFT_eSPI& tft) {
     Rect emergencyBtn  = rowRect(3);
     Rect proximityBtn  = rowRect(4);
     Rect logbookBtn    = rowRect(5);
-    Rect backBtn       = rowRect(6);
+    Rect statsBtn      = rowRect(6);
+    Rect backBtn       = rowRect(7);
 
     bool done = false;
     while (!done) {
@@ -64,6 +66,7 @@ void run(TFT_eSPI& tft) {
         drawButton(tft, emergencyBtn, "Emergency alert: " + onOff(SettingsStore::emergencyAlertEnabled()));
         drawButton(tft, proximityBtn, "Proximity LED: " + onOff(SettingsStore::proximityAlertEnabled()));
         drawButton(tft, logbookBtn, "Flight logbook: " + onOff(SettingsStore::flightLogbookEnabled()));
+        drawButton(tft, statsBtn, "Statistics");
 
         drawButton(tft, backBtn, "Back");
 
@@ -87,6 +90,8 @@ void run(TFT_eSPI& tft) {
             SettingsStore::setProximityAlertEnabled(!SettingsStore::proximityAlertEnabled());
         } else if (logbookBtn.contains(tap.x, tap.y)) {
             SettingsStore::setFlightLogbookEnabled(!SettingsStore::flightLogbookEnabled());
+        } else if (statsBtn.contains(tap.x, tap.y)) {
+            StatsScreen::run(tft);
         } else if (backBtn.contains(tap.x, tap.y)) {
             done = true;
         }

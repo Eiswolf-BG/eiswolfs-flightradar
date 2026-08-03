@@ -19,4 +19,12 @@ namespace FlightLogbook {
     // heutige Logbuch. Kuemmert sich auch um den Tageswechsel (neue Datei,
     // neue "gesehen"-Liste).
     void update();
+
+    // Anzahl der HEUTE bereits geloggten (unterschiedlichen) Flugzeuge.
+    uint16_t todayCount();
+
+    // Summiert alle taeglichen Logbuch-Dateien auf der SD-Karte:
+    // 'totalAircraft' = Summe aller Eintraege ueber alle Tage,
+    // 'totalDays' = Anzahl der Tage, an denen ueberhaupt geloggt wurde.
+    void computeAllTimeStats(uint32_t& totalAircraft, uint16_t& totalDays);
 }
