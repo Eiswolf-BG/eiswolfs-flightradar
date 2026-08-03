@@ -10,6 +10,7 @@ namespace {
     bool emergencyAlertOn = true;
     bool proximityAlertOn = true;
     bool flightLogbookOn = true;
+    bool ledHeartbeatOn = true;
 
     void applyKeyValue(const String& key, const String& value) {
         if (key == "range_index") {
@@ -25,20 +26,26 @@ namespace {
             proximityAlertOn = (value.toInt() != 0);
         } else if (key == "flight_logbook") {
             flightLogbookOn = (value.toInt() != 0);
+        } else if (key == "led_heartbeat") {
+            ledHeartbeatOn = (value.toInt() != 0);
         }
     }
 }
 
 void load() {
     if (!SD.exists(Config::SD_SETTINGS_FILE)) return;
+
     File f = SD.open(Config::SD_SETTINGS_FILE, FILE_READ);
     if (!f) return;
+
     while (f.available()) {
         String line = f.readStringUntil('\n');
         line.trim();
         if (line.length() == 0 || line.startsWith("#")) continue;
+
         int eq = line.indexOf('=');
         if (eq < 0) continue;
+
         String key = line.substring(0, eq);
         String value = line.substring(eq + 1);
         key.trim();
@@ -56,24 +63,52 @@ void save() {
     f.printf("emergency_alert=%d\n", emergencyAlertOn ? 1 : 0);
     f.printf("proximity_alert=%d\n", proximityAlertOn ? 1 : 0);
     f.printf("flight_logbook=%d\n", flightLogbookOn ? 1 : 0);
+    f.printf("led_heartbeat=%d\n", ledHeartbeatOn ? 1 : 0);
     f.close();
 }
 
 uint8_t rangeIndex() { return rangeIdx; }
+
 void setRangeIndex(uint8_t idx) {
-    if (idx < Config::RANGE_STEP_COUNT) { rangeIdx = idx; save(); }
+    if (idx < Config::RANGE_STEP_COUNT) {
+        rangeIdx = idx;
+        save();
+    }
 }
 
 bool displayInverted() { return inverted; }
-void setDisplayInverted(bool inv) { inverted = inv; save(); }
+
+void setDisplayInverted(bool inv) {
+    inverted = inv;
+    save();
+}
 
 bool emergencyAlertEnabled() { return emergencyAlertOn; }
-void setEmergencyAlertEnabled(bool on) { emergencyAlertOn = on; save(); }
+
+void setEmergencyAlertEnabled(bool on) {
+    emergencyAlertOn = on;
+    save();
+}
 
 bool proximityAlertEnabled() { return proximityAlertOn; }
-void setProximityAlertEnabled(bool on) { proximityAlertOn = on; save(); }
+
+void setProximityAlertEnabled(bool on) {
+    proximityAlertOn = on;
+    save();
+}
 
 bool flightLogbookEnabled() { return flightLogbookOn; }
-void setFlightLogbookEnabled(bool on) { flightLogbookOn = on; save(); }
+
+void setFlightLogbookEnabled(bool on) {
+    flightLogbookOn = on;
+    save();
+}
+
+bool ledHeartbeatEnabled() { return ledHeartbeatOn; }
+
+void setLedHeartbeatEnabled(bool on) {
+    ledHeartbeatOn = on;
+    save();
+}
 
 }

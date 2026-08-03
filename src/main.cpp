@@ -109,6 +109,8 @@ void updateStatusLine() {
 }
 
 void takeScreenshotWithFeedback() {
+    LedAlert::flashWhite();
+
     String filename = Screenshot::save(tft);
 
     tft.fillRect(0, 0, Config::SCREEN_WIDTH, CONTENT_TOP, TFT_NAVY);
@@ -126,11 +128,6 @@ void takeScreenshotWithFeedback() {
 }
 
 void haltWithSdRequiredScreen() {
-    // Ohne SD-Karte kann SettingsStore::load() nie laufen, also ist auch die
-    // Invertierungs-Einstellung dieses Geraets unbekannt. Dieses konkrete
-    // CYD-Board braucht invertDisplay(true), um Farben korrekt darzustellen
-    // (ohne das erscheint Schwarz als Weiss und Gruen als Rosa/Magenta) -
-    // hier fest setzen, damit Schwarz/Gruen GARANTIERT korrekt aussieht.
     tft.invertDisplay(true);
 
     tft.fillScreen(TFT_BLACK);

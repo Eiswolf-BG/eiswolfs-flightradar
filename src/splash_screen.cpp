@@ -15,28 +15,30 @@ namespace {
     // Radar-Bildschirm), damit das Flugzeug wie ins Visier genommen wirkt.
     void drawRadarReticle(TFT_eSPI& tft, int16_t cx, int16_t cy) {
         uint16_t dim = 0x0320;
-        tft.drawCircle(cx, cy, 112, dim);
-        tft.drawCircle(cx, cy, 76, dim);
-        tft.drawCircle(cx, cy, 40, dim);
-        tft.drawFastHLine(cx - 112, cy, 224, dim);
-        tft.drawFastVLine(cx, cy - 112, 224, dim);
+        tft.drawCircle(cx, cy, 80, dim);
+        tft.drawCircle(cx, cy, 54, dim);
+        tft.drawCircle(cx, cy, 29, dim);
+        tft.drawFastHLine(cx - 80, cy, 160, dim);
+        tft.drawFastVLine(cx, cy - 80, 160, dim);
     }
 
     // Einfache Vektor-Silhouette eines schlanken Duesenjets von oben (keine
     // Bilddatei eingebunden, daher per Dreiecken gezeichnet) - nur als Umriss
     // (nicht ausgefuellt), in Gruen, passend zum restlichen Dark-Theme.
+    // Etwas kleiner als frueher, damit er sauber zwischen Titel und
+    // Statuszeilen passt, ohne diese zu ueberlappen.
     void drawAirplane(TFT_eSPI& tft, int16_t cx) {
         uint16_t color = TFT_GREEN;
 
         // Schlanker Rumpf (nur Umriss)
-        tft.drawTriangle(cx, 105, cx - 6, 255, cx + 6, 255, color);
+        tft.drawTriangle(cx, 116, cx - 4, 223, cx + 4, 223, color);
 
         // Deltafluegel, nach hinten gepfeilt (nur Umriss)
-        tft.drawTriangle(cx, 160, cx - 100, 235, cx, 200, color);
-        tft.drawTriangle(cx, 160, cx + 100, 235, cx, 200, color);
+        tft.drawTriangle(cx, 155, cx - 71, 209, cx, 184, color);
+        tft.drawTriangle(cx, 155, cx + 71, 209, cx, 184, color);
 
         // Kleines Leitwerk (Hoehenruder) am Heck (nur Umriss)
-        tft.drawTriangle(cx, 250, cx - 22, 268, cx + 22, 268, color);
+        tft.drawTriangle(cx, 219, cx - 16, 232, cx + 16, 232, color);
     }
 }
 
@@ -46,7 +48,7 @@ void begin(TFT_eSPI& tft) {
     int16_t cx = tft.width() / 2;
 
     tft.fillScreen(TFT_BLACK);
-    drawRadarReticle(tft, cx, 185);
+    drawRadarReticle(tft, cx, 174);
     drawAirplane(tft, cx);
 
     tft.setTextDatum(MC_DATUM);

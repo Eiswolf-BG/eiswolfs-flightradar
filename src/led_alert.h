@@ -7,17 +7,19 @@
 namespace LedAlert {
 
     enum class Mode {
-        Off,             // keine LED
-        ProximityGreen,  // Flugzeug innerhalb des Naeherungsradius -> gruen blinkt
-        EmergencyRed,    // Notfall-Squawk (7500/7600/7700) -> rot blinkt schneller, hat Vorrang
+        Off,
+        ProximityGreen,
+        EmergencyRed,
     };
 
-    // Einmalig in setup() aufrufen.
     void begin();
-
-    // Haeufig aufrufen (z.B. alle 80-100ms). Schaltet die LED passend zum
-    // Modus an/aus (blinkend, volle Helligkeit) und gibt den aktuellen
-    // Blink-Zustand zurueck (true = LED gerade an), damit der Radar-
-    // Bildschirm z.B. den betroffenen Punkt synchron mitblinken lassen kann.
     bool update(Mode mode, uint32_t nowMs);
+
+    void pulseHeartbeat(uint32_t nowMs);
+
+    // Blockierendes, kurzes weisses Aufblitzen (alle 3 Farbkanaele an) als
+    // sofortige Bestaetigung fuer eine einmalige Nutzeraktion (z.B. "Cam"-
+    // Button getroffen). Bewusst blockierend (delay), da nur aus dem
+    // Haupt-Loop bei einem Tap aufgerufen, nicht aus der NetTask-Schleife.
+    void flashWhite(uint32_t durationMs = 150);
 }

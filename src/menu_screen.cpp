@@ -17,9 +17,9 @@ namespace {
         }
     };
 
-    constexpr int16_t ROW_H = 26;
-    constexpr int16_t ROW_GAP = 3;
-    constexpr int16_t ROW_START_Y = 24;
+    constexpr int16_t ROW_H = 24;
+    constexpr int16_t ROW_GAP = 2;
+    constexpr int16_t ROW_START_Y = 20;
 
     Rect rowRect(uint8_t index) {
         return {10, (int16_t)(ROW_START_Y + index * (ROW_H + ROW_GAP)),
@@ -44,16 +44,17 @@ void run(TFT_eSPI& tft) {
     Rect wifiBtn       = rowRect(2);
     Rect emergencyBtn  = rowRect(3);
     Rect proximityBtn  = rowRect(4);
-    Rect logbookBtn    = rowRect(5);
-    Rect statsBtn      = rowRect(6);
-    Rect logFilesBtn   = rowRect(7);
-    Rect backBtn       = rowRect(8);
+    Rect heartbeatBtn  = rowRect(5);
+    Rect logbookBtn    = rowRect(6);
+    Rect statsBtn      = rowRect(7);
+    Rect logFilesBtn   = rowRect(8);
+    Rect backBtn       = rowRect(9);
 
     bool done = false;
     while (!done) {
         tft.fillScreen(TFT_BLACK);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.setCursor(10, 6);
+        tft.setCursor(10, 4);
         tft.println("Settings");
 
         drawButton(tft, calibBtn, "Calibrate touch");
@@ -67,6 +68,7 @@ void run(TFT_eSPI& tft) {
 
         drawButton(tft, emergencyBtn, "Emergency alert: " + onOff(SettingsStore::emergencyAlertEnabled()));
         drawButton(tft, proximityBtn, "Proximity LED: " + onOff(SettingsStore::proximityAlertEnabled()));
+        drawButton(tft, heartbeatBtn, "LED heartbeat: " + onOff(SettingsStore::ledHeartbeatEnabled()));
         drawButton(tft, logbookBtn, "Flight logbook: " + onOff(SettingsStore::flightLogbookEnabled()));
         drawButton(tft, statsBtn, "Statistics");
         drawButton(tft, logFilesBtn, "Logbook files");
@@ -91,6 +93,8 @@ void run(TFT_eSPI& tft) {
             SettingsStore::setEmergencyAlertEnabled(!SettingsStore::emergencyAlertEnabled());
         } else if (proximityBtn.contains(tap.x, tap.y)) {
             SettingsStore::setProximityAlertEnabled(!SettingsStore::proximityAlertEnabled());
+        } else if (heartbeatBtn.contains(tap.x, tap.y)) {
+            SettingsStore::setLedHeartbeatEnabled(!SettingsStore::ledHeartbeatEnabled());
         } else if (logbookBtn.contains(tap.x, tap.y)) {
             SettingsStore::setFlightLogbookEnabled(!SettingsStore::flightLogbookEnabled());
         } else if (statsBtn.contains(tap.x, tap.y)) {

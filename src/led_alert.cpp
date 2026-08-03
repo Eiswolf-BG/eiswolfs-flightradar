@@ -15,6 +15,10 @@ namespace {
     uint32_t lastToggleMs = 0;
     Mode lastMode = Mode::Off;
 
+    bool heartbeatActive = false;
+    uint32_t heartbeatStartMs = 0;
+    constexpr uint32_t HEARTBEAT_PULSE_MS = 200;
+
     void setAllOff() {
         digitalWrite(PIN_RED, HIGH);
         digitalWrite(PIN_GREEN, HIGH);
@@ -30,10 +34,27 @@ void begin() {
     initialized = true;
 }
 
+void pulseHeartbeat(uint32_t nowMs) {
+    heartbeatActive = true;
+    heartbeatStartMs = nowMs;
+}
+
 bool update(Mode mode, uint32_t nowMs) {
     if (!initialized) begin();
 
     if (mode == Mode::Off) {
+        if (heartbeatActive) {
+            if (nowMs - heartbeatStartMs < HEARTBEAT_PULSE_MS) {
+                digitalWrite(PIN_GREEN, LOW);
+                digitalWrite(PIN_RED, HIGH);
+                digitalWrite(PIN_BLUE, HIGH);
+                blinkState = false;
+                lastMode = mode;
+                return true;
+            }
+            heartbeatActive = false;
+        }
+
         setAllOff();
         blinkState = false;
         lastMode = mode;
@@ -59,6 +80,16 @@ bool update(Mode mode, uint32_t nowMs) {
     digitalWrite(PIN_BLUE, HIGH);
 
     return blinkState;
+}
+
+void flashWhite(uint32_t durationMs) {
+    if (!initialized) begin();
+
+    digitalWrite(PIN_RED, LOW);
+    digitalWrite(PIN_GREEN, LOW);
+    digitalWrite(PIN_BLUE, LOW);
+    delay(durationMs);
+    setAllOff();
 }
 
 }

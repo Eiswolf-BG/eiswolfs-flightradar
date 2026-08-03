@@ -9,6 +9,7 @@
 #include "settings_store.h"
 #include "led_alert.h"
 #include "location_manager.h"
+#include "world_map.h"
 #include <math.h>
 
 namespace RadarScreen {
@@ -211,6 +212,37 @@ namespace {
         }
     }
 
+    // Dezente Weltkarten-Silhouette als Hintergrund-Layer, wie bei einem
+    // klassischen ATC-Radarschirm - rein dekorativ (nicht massstabsgetreu
+    // zu den Entfernungsringen). Wird auf das quadratische Kreis-Layout
+    // gestreckt (die Karte ist 2:1, der Kreis-Bereich 1:1 - das verzerrt
+    // die Kontinente etwas in der Hoehe, faellt aber bei dieser Groesse
+    // kaum auf und haelt die Zeichenlogik einfach). Wird NUR bei render()
+    // gezeichnet, NICHT bei jedem Sweep-Tick (zu teuer fuer 12x/Sekunde).
+    void drawWorldMap(TFT_eSPI& gfx, const Layout& L) {
+        constexpr uint16_t dim = 0x0320; // sehr gedaempftes Gruen
+        float scaleX = (2.0f * L.radius) / WorldMap::GRID_W;
+        float scaleY = (2.0f * L.radius) / WorldMap::GRID_H;
+        int32_t radiusSq = (int32_t)(L.radius - 2) * (L.radius - 2);
+
+        for (uint8_t row = 0; row < WorldMap::GRID_H; row++) {
+            uint64_t bits = WorldMap::ROWS[row];
+            if (bits == 0) continue;
+            for (uint8_t col = 0; col < WorldMap::GRID_W; col++) {
+                if (!(bits & (1ULL << (WorldMap::GRID_W - 1 - col)))) continue;
+
+                int16_t px = L.cx - L.radius + (int16_t)((col + 0.5f) * scaleX);
+                int16_t py = L.cy - L.radius + (int16_t)((row + 0.5f) * scaleY);
+
+                int16_t dx = px - L.cx;
+                int16_t dy = py - L.cy;
+                if ((int32_t)dx * dx + (int32_t)dy * dy > radiusSq) continue;
+
+                gfx.drawPixel(px, py, dim);
+            }
+        }
+    }
+
     void drawSweepLine(TFT_eSPI& gfx, const Layout& L, float angleDeg, uint16_t color) {
         double rad = angleDeg * DEG_TO_RAD;
         int16_t x2 = L.cx + (int16_t)(L.radius * sin(rad));
@@ -368,6 +400,7 @@ void render(TFT_eSPI& tft, int16_t top) {
 
     tft.fillRect(0, top, Config::SCREEN_WIDTH, Config::SCREEN_HEIGHT - top, TFT_BLACK);
 
+    drawWorldMap(tft, L);
     drawStaticBackground(tft, L, rangeKm);
 
     drawSweepLine(tft, L, sweepAngleDeg, TFT_GREEN);

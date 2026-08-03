@@ -8,6 +8,7 @@
 #include "settings_store.h"
 #include "aircraft_details.h"
 #include "flight_logbook.h"
+#include "led_alert.h"
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -50,6 +51,14 @@ namespace {
                         AircraftTable::unlock();
 
                         FlightLogbook::update();
+
+                        // Kurzer gruener LED-Blitz als "Herzschlag" - zeigt,
+                        // dass gerade eine Abfrage gelaufen ist. Wird von
+                        // LedAlert::update() automatisch ignoriert, solange
+                        // ein Naeherungs-/Notfall-Alarm aktiv ist.
+                        if (SettingsStore::ledHeartbeatEnabled()) {
+                            LedAlert::pulseHeartbeat(millis());
+                        }
                     } else {
                         Serial.printf("[NetTask] Abfrage fehlgeschlagen (HTTP %d)\n", result.httpCode);
                     }
